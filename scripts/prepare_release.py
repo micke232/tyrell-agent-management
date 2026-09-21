@@ -27,6 +27,10 @@ def prepare(repository, output, check=False):
         shutil.copytree(ROOT/'tyrell', source/'tyrell', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         (source/'docs').mkdir()
         shutil.copyfile(ROOT/'docs/install.md', source/'docs/install.md')
+        # Git records executable bits, not the checkout's read/write permissions.
+        # Wheels retain file modes, so normalize the temporary source tree.
+        for path in source.rglob('*'):
+            path.chmod(0o755 if path.is_dir() else 0o644)
         subprocess.run([sys.executable, '-m', 'build', '--wheel', '--no-isolation',
                         '--outdir', directory, str(source)], env=env, check=True)
         wheel, = Path(directory).glob('*.whl')
