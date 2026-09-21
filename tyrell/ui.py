@@ -280,7 +280,7 @@ class Dashboard:
             except Exception as error:
                 self.updates.put(("offline", str(error)))
             thread = self.current()
-            delay = 0.15 if thread.get("status", {}).get("type") == "active" or self.pending_messages else 0.5
+            delay = 0.15 if self.is_active(thread) or self.pending_messages else 0.5
             self.refresh_requested.wait(delay)
             self.refresh_requested.clear()
 
@@ -518,6 +518,11 @@ class Dashboard:
         now = time.monotonic() if now is None else now
         elapsed = now - self.last_input_at if self.last_input_at is not None else now
         return int(max(0, elapsed) / 0.85) % 2
+
+    @staticmethod
+    def is_active(entry):
+        status = entry.get("status")
+        return isinstance(status, dict) and status.get("type") == "active"
 
     def current(self):
         return next((t for key, t in self.rows if key == self.selected), {})
@@ -844,7 +849,7 @@ class Dashboard:
         label = status_label(t, self.provider_connected(t)) if t and not (self.selected or "").startswith("task:") else "planned"
         if self.browse == "archive":
             label = "Archived"
-        active = isinstance(t.get("status"), dict) and t["status"].get("type") == "active"
+        active = self.is_active(t)
         elapsed = time.time() - t["startedAt"] if active and t.get("startedAt") else (t.get("durationMs") or 0) / 1000
         thinking = bool(items and items[-1].get("type") == "reasoning")
         activity = activity_indicator(label, time.monotonic(), thinking)
@@ -1094,7 +1099,7 @@ class Dashboard:
 
     def begin_handoff(self):
         t = self.current()
-        if not (self.selected or "").startswith("thread:") or t.get("status", {}).get("type") == "active":
+        if not (self.selected or "").startswith("thread:") or self.is_active(t):
             self.notice = "Select a ready agent, or interrupt it before handing over"
             return
         self.wizard = {"kind": "new", "field": "name", "label": "Hand over · New agent name", "source": t["id"]}
@@ -1768,7 +1773,7 @@ class Dashboard:
                 size = screen.getmaxyx()
                 # Native Cmd+C belongs to Terminal. Leave its selection intact by
                 # keeping the displayed frame still until keyboard input or resize.
-                active = self.current().get("status", {}).get("type") == "active"
+                active = self.is_active(self.current())
                 pulse = self.cursor_blink_phase(frame_started)
                 if (repaint_native or size != native_size or (not native_mode and (updated or active))):
                     self.render(screen)

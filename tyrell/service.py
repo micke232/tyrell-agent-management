@@ -63,6 +63,7 @@ class Service:
         self.opencode = OpenCodeRuntime(self.state, self.directory, self.on_request)
         self.process_inventory = {}
         self.installation = {}
+        self.background_errors = {}
         self.workspace_git = {}
         self.workspace_requested = None
         self.files_requested = None
@@ -76,7 +77,11 @@ class Service:
         while tid and tid not in seen:
             seen.add(tid)
             entity = self.state.data["threads"].get(tid) or self.state.data["archived"].get(tid) or {}
-            if entity.get("managed") or tid in task_threads:
+            # Older Hub agents predate the managed flag. A Hub-created worktree
+            # is ownership evidence; merely appearing in the old catalog is not.
+            worktree = entity.get("agentWorktree", {}).get("root")
+            legacy_owned = bool(worktree and (self.directory / "worktrees").resolve() in Path(worktree).resolve().parents)
+            if entity.get("managed") or legacy_owned or tid in task_threads:
                 return True
             tid = entity.get("parentThreadId")
         return False
@@ -266,9 +271,18 @@ class Service:
                     shutil.copyfile(source, temporary)
                     os.chmod(temporary, 0o600)
                     temporary.replace(destination)
-                result = await self.rpc.call("thread/resume", {"threadId": tid, "path": str(destination)})
+                saved_name = t.get("name")
+                try:
+                    result = await self.rpc.call("thread/resume", {"threadId": tid, "path": str(destination)})
+                except RpcError as error:
+                    if "already has an active writer" in str(error).lower():
+                        raise MigrationBusy("Waiting for the existing session writer before migrating") from error
+                    raise
                 if result["thread"]["id"] != tid:
                     raise RpcError("Codex migration returned an unexpected session identifier")
+                if saved_name:
+                    await self.rpc.call("thread/name/set", {"threadId": tid, "name": saved_name})
+                    t["name"] = saved_name
                 if tid in self.state.data["archived"]:
                     await self.rpc.call("thread/archive", {"threadId": tid})
                 # Archive the shared original; do not delete it or any IDE session.
@@ -281,6 +295,8 @@ class Service:
 
     async def connection_loop(self):
         while not self.stop.is_set():
+            if self.private_codex:
+                self.codex_env, self.codex_home = codex_environment(self.directory)
             self.rpc = Rpc(self.command, self.codex_event, self.on_request, env=self.codex_env)
             try:
                 await self.rpc.connect()
@@ -288,14 +304,18 @@ class Service:
                 self.observed.clear()
                 self.clear_codex_requests()
                 self.using_private = self.private_codex
+                migration_retry_at = 0
                 try:
                     await self.migrate_codex_sessions()
-                except MigrationBusy:
+                except RpcError as error:
+                    if not isinstance(error, MigrationBusy) and "already has an active writer" not in str(error).lower():
+                        raise
                     # Keep approvals, steering and output available until old turns finish.
                     await self.rpc.close()
                     self.rpc = Rpc(self.legacy_command, self.codex_event, self.on_request)
                     await self.rpc.connect()
                     self.using_private = False
+                    migration_retry_at = time.monotonic() + 60
                 self.state.models = await self.pages("model/list", {})
                 await self.refresh()
                 self.state.connected = True
@@ -303,7 +323,7 @@ class Service:
                 while not self.rpc.reader_task.done() and not self.stop.is_set():
                     await asyncio.sleep(5)
                     await self.refresh()
-                    if self.private_codex and not self.using_private and not any(
+                    if self.private_codex and not self.using_private and time.monotonic() >= migration_retry_at and not any(
                             self.owns_thread(t["id"]) and t.get("provider", "codex") == "codex"
                             and t.get("status", {}).get("type") == "active"
                             for t in self.state.data["threads"].values()):
@@ -459,7 +479,7 @@ class Service:
                                                  "changedFiles": t.get("changedFiles", {}) if tid == req.get("threadId") else {}}
                                             for tid, t in snapshot[collection].items()}
             return {**snapshot, "apiVersion": 9, "appVersion": __version__, "installation": self.installation, "workspaceGit": self.workspace_git, "filesBrowser": self.files_browser if req.get("view") == "files" else None, "pid": os.getpid(), "providers": self.providers(), "processInventory": self.process_inventory,
-                    "preventingSleep": bool(self.caffeine and self.caffeine.returncode is None), "sleepError": self.sleep_error}
+                    "preventingSleep": bool(self.caffeine and self.caffeine.returncode is None), "sleepError": self.sleep_error, "backgroundErrors": dict(self.background_errors)}
         if action == "files_open":
             root = Path(req["path"]).expanduser().resolve(strict=True)
             if not root.is_dir():
@@ -986,6 +1006,29 @@ class Service:
             with contextlib.suppress(ConnectionError):
                 await writer.wait_closed()
 
+    async def supervise(self, name, factory, once=False):
+        """Restart infrastructure loops, never replay user commands or agent turns."""
+        while not self.stop.is_set():
+            try:
+                await factory()
+                if once or self.stop.is_set():
+                    return
+                raise RuntimeError("Background task exited unexpectedly")
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                # Exception messages can contain provider credentials; expose only the type.
+                message = type(error).__name__ + "; retrying automatically"
+                self.background_errors[name] = message
+                print(name + ": " + message, file=sys.stderr, flush=True)
+                if name == "Codex connection":
+                    self.state.connected = False
+                    self.state.error = "Codex connection stopped; retrying automatically"
+            try:
+                await asyncio.wait_for(self.stop.wait(), 3)
+            except asyncio.TimeoutError:
+                pass
+
     async def run(self):
         self.stop = asyncio.Event()
         os.umask(0o077)
@@ -1011,11 +1054,18 @@ class Service:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stop.set)
-        jobs = [asyncio.create_task(self.check_installation()), asyncio.create_task(self.connection_loop()), asyncio.create_task(self.maintain()),
-                asyncio.create_task(self.monitor_processes()), asyncio.create_task(self.monitor_workspace()), asyncio.create_task(self.monitor_files()),
-                asyncio.create_task(self.opencode.run(self.stop)),
-                asyncio.create_task(self.copilot.run(self.stop, self.directory,
-                                    lambda: self.state.data["settings"].get("copilotHost")))]
+        loops = {
+            "Codex connection": self.connection_loop,
+            "State maintenance": self.maintain,
+            "Processes": self.monitor_processes,
+            "Workspace": self.monitor_workspace,
+            "Files": self.monitor_files,
+            "OpenCode connection": lambda: self.opencode.run(self.stop),
+            "Copilot connection": lambda: self.copilot.run(self.stop, self.directory,
+                lambda: self.state.data["settings"].get("copilotHost")),
+        }
+        jobs = [asyncio.create_task(self.supervise("CLI detection", self.check_installation, once=True))]
+        jobs.extend(asyncio.create_task(self.supervise(name, factory)) for name, factory in loops.items())
         try:
             await self.stop.wait()
         finally:

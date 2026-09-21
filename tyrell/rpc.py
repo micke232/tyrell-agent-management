@@ -1,5 +1,6 @@
 """Multiplexed JSON-RPC for an owned stdio server or a legacy daemon proxy."""
 import asyncio
+import contextlib
 import json
 
 from .websocket import WebSocket
@@ -30,7 +31,16 @@ class Rpc:
         self.stderr_task = asyncio.create_task(self.read_stderr())
         if "proxy" in self.command:
             self.websocket = WebSocket(self.process.stdout, self.process.stdin)
-            await self.websocket.handshake()
+            try:
+                await self.websocket.handshake()
+            except asyncio.IncompleteReadError as error:
+                # EOF during the HTTP upgrade must enter the service retry loop.
+                if self.stderr_task:
+                    try:
+                        await asyncio.wait_for(asyncio.shield(self.stderr_task), .5)
+                    except asyncio.TimeoutError:
+                        pass
+                raise RpcError("Codex proxy disconnected during handshake. " + self.stderr[-500:]) from error
         self.reader_task = asyncio.create_task(self.read())
         await self.call("initialize", {"clientInfo": {"name": "tyrell", "title": "Tyrell Agent Management", "version": "0.1.0"},
                                        "capabilities": {"experimentalApi": True}})
@@ -93,11 +103,13 @@ class Rpc:
 
     async def close(self):
         if self.process and self.process.returncode is None:
-            self.process.terminate()  # Only the process we started, never a shared Codex daemon.
+            with contextlib.suppress(ProcessLookupError):
+                self.process.terminate()  # Only our own child, never a shared daemon.
             try:
                 await asyncio.wait_for(self.process.wait(), 3)
             except asyncio.TimeoutError:
-                self.process.kill()
+                with contextlib.suppress(ProcessLookupError):
+                    self.process.kill()
                 await self.process.wait()
         for task in (self.reader_task, self.stderr_task):
             if task and not task.done():
