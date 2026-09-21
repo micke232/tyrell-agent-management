@@ -5,7 +5,7 @@ class Tyrell < Formula
   homepage "https://github.com/micke232/tyrell-agent-management"
   url "https://github.com/micke232/tyrell-agent-management/releases/download/v0.2.0a7/tyrell-0.2.0a7-homebrew.tar.gz"
   version "0.2.0a7"
-  sha256 "37ddd277525a4e124e53d7d1a79397474cc5cc26de7b67eabd9a25f0b7429b58"
+  sha256 "011b46ce8797e224797505ebe10934eed8d5e9b62e8e98a2c7c9f10306c4074e"
 
   depends_on "python@3.14"
   depends_on "git"

@@ -111,10 +111,12 @@ def check():
                 marker = 'REPLY_%03d_VISIBLE' % i
                 with lock:
                     thread['status'] = {'type': 'active', 'activeFlags': []}
+                    thread['plan'] = [{'step': marker, 'status': 'inProgress'}]
                     thread['items'].append({'id': 'fresh-'+str(i), 'type': 'agentMessage', 'text': marker})
                 start = time.monotonic()
                 wait(lambda: marker in frame().get('text', []), 'incoming reply')
                 replies.append((time.monotonic() - start) * 1000)
+                wait(lambda: frame().get('plan') == [{'step': marker, 'status': 'inProgress'}], 'updated plan')
             typing = []
             with lock:
                 thread['status'] = {'type': 'idle'}

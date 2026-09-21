@@ -7,6 +7,28 @@ from test_native_clipboard import fixture
 
 
 class ResponsivenessTests(unittest.TestCase):
+    def test_task_status_does_not_stop_snapshot_polling(self):
+        ui, _ = fixture()
+        task = {"id": "planned", "status": "planned"}
+        ui.selected, ui.rows = "task:planned", [("task:planned", task)]
+        calls = []
+        def request(*args, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 2:
+                ui.stopped.set()
+            return {"threads": {}, "tasks": [task]}
+        with patch("tyrell.ui.request", side_effect=request), patch.object(ui.refresh_requested, "wait"):
+            ui.polling()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(ui.updates.qsize(), 2)
+        self.assertTrue(all(call["threadId"] is None for call in calls))
+
+    def test_activity_accepts_task_and_agent_status_shapes(self):
+        ui, _ = fixture()
+        for status in ("planned", "running", None, {}, {"type": "idle"}):
+            self.assertFalse(ui.is_active({"status": status}))
+        self.assertTrue(ui.is_active({"status": {"type": "active"}}))
+
     def test_only_text_cursor_blinks_while_prompt_and_text_stay_stable(self):
         import curses
         from test_native_clipboard import Screen

@@ -22,7 +22,7 @@ class TrackedDashboard(Dashboard):
         state = {'at': time.monotonic(), 'buffer': self.buffer, 'renders': self.renders,
                  'settingsSelected': self.hub_selected,
                  'settingsMarker': screen.instr(next((y for _, _, y, action in self.hub_hits if action == self.hub_selected), 0), 4, 3).decode('utf-8', errors='replace') if self.panel == 'HUB SETTINGS' else '',
-                 'panel': self.panel, 'picking': self.appearance.picking, 'appearance': self.appearance.values,
+                 'plan': self.current().get('plan', []), 'panel': self.panel, 'picking': self.appearance.picking, 'appearance': self.appearance.values,
                  'basePair': curses.pair_content(list(PALETTE).index('base')+1),
                  'statusPairs': {name: curses.pair_content(list(PALETTE).index(name)+1) for name in ('working', 'success', 'warning', 'error')},
                  'text': [v['text'] for v in self.history_cells.values()]}
