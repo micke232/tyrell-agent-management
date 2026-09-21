@@ -1,4 +1,4 @@
-"""One durable, multiplexed JSON-RPC connection to `codex app-server proxy`."""
+"""Multiplexed JSON-RPC for an owned stdio server or a legacy daemon proxy."""
 import asyncio
 import json
 
@@ -10,8 +10,9 @@ class RpcError(RuntimeError):
 
 
 class Rpc:
-    def __init__(self, command, on_event, on_request):
+    def __init__(self, command, on_event, on_request, env=None):
         self.command = command
+        self.env = env
         self.on_event = on_event
         self.on_request = on_request
         self.pending = {}
@@ -25,7 +26,7 @@ class Rpc:
     async def connect(self):
         self.process = await asyncio.create_subprocess_exec(
             *self.command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE, limit=32 * 1024 * 1024)
+            stderr=asyncio.subprocess.PIPE, limit=32 * 1024 * 1024, env=self.env)
         self.stderr_task = asyncio.create_task(self.read_stderr())
         if "proxy" in self.command:
             self.websocket = WebSocket(self.process.stdout, self.process.stdin)
@@ -88,11 +89,11 @@ class Rpc:
         finally:
             for f in self.pending.values():
                 if not f.done():
-                    f.set_exception(RpcError("Codex proxy disconnected. " + self.stderr[-500:]))
+                    f.set_exception(RpcError("Codex server disconnected. " + self.stderr[-500:]))
 
     async def close(self):
         if self.process and self.process.returncode is None:
-            self.process.terminate()  # Only our proxy, never the shared Codex daemon.
+            self.process.terminate()  # Only the process we started, never a shared Codex daemon.
             try:
                 await asyncio.wait_for(self.process.wait(), 3)
             except asyncio.TimeoutError:

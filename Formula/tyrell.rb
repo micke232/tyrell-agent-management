@@ -3,16 +3,16 @@ class Tyrell < Formula
 
   desc "Terminal hub for independent Codex and GitHub Copilot agents"
   homepage "https://github.com/micke232/tyrell-agent-management"
-  url "https://github.com/micke232/tyrell-agent-management/releases/download/v0.2.0a6/tyrell-0.2.0a6-homebrew.tar.gz"
-  version "0.2.0a6"
-  sha256 "1635282ed5c1cf66922aa714c86f30db4900c7653f0854d03b0edf51d6510272"
+  url "https://github.com/micke232/tyrell-agent-management/releases/download/v0.2.0a7/tyrell-0.2.0a7-homebrew.tar.gz"
+  version "0.2.0a7"
+  sha256 "dd10f55a4672c075653b04f1bf2a534a907cdcb5e0430d06415c93e4eeeb05df"
 
   depends_on "python@3.14"
   depends_on "git"
 
   def install
     venv = virtualenv_create(libexec, Formula["python@3.14"].opt_bin/"python3.14")
-    venv.pip_install_and_link buildpath/"tyrell_agent_management-0.2.0a6-py3-none-any.whl"
+    venv.pip_install_and_link buildpath/"tyrell_agent_management-0.2.0a7-py3-none-any.whl"
   end
 
   def caveats

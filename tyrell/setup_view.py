@@ -196,9 +196,9 @@ class SetupForm:
             params = {"scope": "project", "path": path}
             config = effective_config(data, project=path)
             raw = data.get("projectProfiles", {}).get(path, {}).get("config", {})
-        if params["scope"] == "agent" and target_entity(data, ui.selected).get("provider") == "copilot":
+        if params["scope"] == "agent" and target_entity(data, ui.selected).get("provider") in ("copilot", "opencode"):
             data = dict(data, models=[{"model": m["id"], "displayName": m["name"], "supportedReasoningEfforts": []}
-                                     for m in data.get("providers", {}).get("copilot", {}).get("models", [])])
+                                     for m in data.get("providers", {}).get(target_entity(data, ui.selected)["provider"], {}).get("models", [])])
         return data, params, config, raw
 
     def build_rows(self, ui):
@@ -280,16 +280,19 @@ class SetupForm:
                     row("    " + ("[x] " if selected else "[ ] ") + script["name"] + " · " + role,
                         "script:" + script["name"], script["command"] + " · Selects the command; does not run it.", "success" if selected else "base")
                 continue
-            copilot = self.scope == "agent" and target_entity(data, ui.selected).get("provider") == "copilot"
+            provider = target_entity(data, ui.selected).get("provider", "codex")
+            provider_name = {"copilot": "Copilot", "opencode": "OpenCode"}.get(provider, "Codex")
+            access_key = provider + "Access"
+            copilot = self.scope == "agent" and provider in ("copilot", "opencode")
             if section == "Access" and copilot:
-                value = config.get("copilotAccess", "Ask")
-                row("    Copilot permissions: " + value, "copilotAccess", FIELDS["copilotAccess"]["help"], "success" if value == "Autonomous" else "base")
+                value = config.get(access_key, "Ask")
+                row("    " + provider_name + " permissions: " + value, access_key, FIELDS[access_key]["help"], "success" if value == "Autonomous" else "base")
                 row("    Ask: review permission requests", "access:help", "The CLI asks when an operation needs approval.", "muted")
                 row("    Autonomous: allow files, network and tools", "access:help", "No routine approval prompts. Organization policies and user questions still apply. This is not a Codex sandbox.", "muted")
-                actual = target_entity(data, ui.selected).get("reportedAccess", {}).get("copilotAccess", "Not reported")
+                actual = target_entity(data, ui.selected).get("reportedAccess", {}).get(access_key, "Not reported")
                 row("    Current session: " + actual, "access:help", "Saved changes apply to the next new turn, not while steering an active one.", "warning" if actual != value else "muted")
-                row("    Copilot CLI tool permissions", "section:Access", "In Ask mode, requests appear under Waiting. Manual approvals apply once.", "accent")
-                row("    No Codex file or network sandbox", "section:Access", "Copilot CLI and organization policies control access; worktrees isolate changes, not security.", "warning")
+                row("    " + provider_name + " CLI tool permissions", "section:Access", "In Ask mode, requests appear under Waiting. Manual approvals apply once.", "accent")
+                row("    No Codex file or network sandbox", "section:Access", "The provider CLI controls access; worktrees isolate changes, not security.", "warning")
                 continue
             if section == "Access":
                 row("    Access explained…", "access:help", "Read what each profile permits and when changes apply.", "accent")
@@ -314,7 +317,7 @@ class SetupForm:
                     row("    Saved changes pending next turn", "access:help", "The current session still has the policy shown above. Send a message when the agent is ready to apply your saved settings.", "warning")
             for f in fields:
                 key, value = f["key"], config[f["key"]]
-                if key == "copilotAccess":
+                if key in ("copilotAccess", "opencodeAccess"):
                     continue
                 if copilot and key in ("effort", "tier"):
                     continue
@@ -434,8 +437,9 @@ class SetupForm:
         if action == "preview":
             engine = "\n".join(FIELDS[k]["label"] + ": " + dict(choices_for(k, config, data.get("models", []), target_entity(data, ui.selected) if params["scope"] == "agent" else {})).get(config[k], config[k]) for k in ("model", "effort", "tier"))
             checks = ", ".join(FIELDS[k]["label"] for k in ("lint", "typecheck", "unit", "integration", "e2e", "build") if config[k]) or "None"
-            access_preview = ("\nCopilot permissions (next turn): " + config["copilotAccess"]
-                              if params["scope"] == "agent" and target_entity(data, ui.selected).get("provider") == "copilot"
+            provider = target_entity(data, ui.selected).get("provider", "codex")
+            access_preview = ("\n" + provider.capitalize() + " permissions (next turn): " + config[provider + "Access"]
+                              if params["scope"] == "agent" and provider in ("copilot", "opencode")
                               else "\nFile access (next turn): " + config["fileAccess"] + "\nApprovals (next turn): " + config["approvalMode"])
             ui.panel = ("AGENT SETUP PREVIEW\n\n## Overview\n" + engine + "\nWork mode: " + config["mode"]
                         + "\nSelected checks: " + ("None (Do not run)" if config["testScope"] == "Do not run" else checks)

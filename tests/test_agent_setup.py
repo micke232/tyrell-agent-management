@@ -28,6 +28,7 @@ class SetupServiceTests(unittest.IsolatedAsyncioTestCase):
         self.service.state.models = MODELS
         self.service.state.connected = True
         self.thread = self.service.state.thread("a")
+        self.thread["managed"] = True
         self.thread.update(cwd=self.temp.name, model="test-model", status={"type": "idle"})
         self.service.subscribed.add("a")
         self.service.rpc = SimpleNamespace(call=AsyncMock(return_value={"turn": {"id": "t", "status": "inProgress"}}))

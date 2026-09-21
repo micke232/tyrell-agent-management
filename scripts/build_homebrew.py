@@ -29,7 +29,7 @@ def build(wheel, repository, output):
     archive_path = output / filename
     # Package only the verified wheel and generic installation guide, never the checkout/state.
     with archive_path.open('wb') as raw, gzip.GzipFile(fileobj=raw, mode='wb', filename='', mtime=0) as compressed, tarfile.open(fileobj=compressed, mode='w') as tar:
-        for name, data in ((wheel.name, wheel.read_bytes()), ('INSTALL.md', (ROOT/'docs/install.md').read_bytes())):
+        for name, data in ((wheel.name, wheel.read_bytes()), ('INSTALL.md', (ROOT/'docs/install.md').read_bytes()), ('opencode.md', (ROOT/'docs/opencode.md').read_bytes())):
             info = tarfile.TarInfo('tyrell-' + version + '/' + name)
             info.size, info.mode, info.mtime = len(data), 0o644, 0
             tar.addfile(info, io.BytesIO(data))

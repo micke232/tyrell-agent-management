@@ -23,7 +23,7 @@ class HomebrewPackageTests(unittest.TestCase):
             self.assertIn('https://github.com/example/tyrell/releases/download/v0.2.0a2/'+archive.name,text)
             self.assertNotIn('@@',text)
             with tarfile.open(archive) as tar:
-                self.assertEqual([Path(p).name for p in tar.getnames()],[wheel.name,'INSTALL.md'])
+                self.assertEqual([Path(p).name for p in tar.getnames()],[wheel.name,'INSTALL.md','opencode.md'])
             original=archive.read_bytes()
             build(wheel,'example/tyrell',root/'out')
             self.assertEqual(archive.read_bytes(),original)

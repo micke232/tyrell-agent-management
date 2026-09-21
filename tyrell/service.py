@@ -4,12 +4,14 @@ import fcntl
 import json
 import os
 import signal
+import shutil
 import sys
 import time
 import uuid
 from pathlib import Path
 
 from .rpc import Rpc, RpcError
+from .codex_storage import environment as codex_environment
 from . import __version__
 from .hub_settings import local_report
 from .state import State
@@ -22,6 +24,7 @@ from .workspace_changes import git_bytes, changes as workspace_changes
 from .files_view import workspace_root
 from urllib.parse import urlparse
 from .copilot_runtime import CopilotRuntime
+from .opencode_runtime import OpenCodeRuntime
 from .agent_setup import (discover_project, effective_config, instruction_text, model_info,
                           discover_git, target_entity, validate_engine, validate_patch, guidance_conflicts, project_root)
 
@@ -29,11 +32,23 @@ from .agent_setup import (discover_project, effective_config, instruction_text, 
 SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown"]
 
 
+class MigrationBusy(RpcError):
+    pass
+
+
 class Service:
     def __init__(self, directory, command):
         self.state = State(directory)
         self.directory = Path(directory)
         self.command = command
+        self.private_codex = command[1:] == ["app-server", "proxy"]
+        self.codex_env = None
+        self.codex_home = None
+        if self.private_codex:
+            self.codex_env, self.codex_home = codex_environment(self.directory)
+            self.command = [command[0], "app-server", "--stdio", "-c", "sqlite_home=" + json.dumps(str(self.codex_home)), "-c", "log_dir=" + json.dumps(str(self.codex_home / "log"))]
+        self.legacy_command = command
+        self.using_private = self.private_codex
         self.rpc = None
         self.subscribed = set()
         self.observed = set()
@@ -45,6 +60,7 @@ class Service:
         self.copilot = CopilotConnection()
         self.copilot_runtime = CopilotRuntime(self.state, self.directory,
             lambda: self.state.data["settings"].get("copilotHost"), self.on_request)
+        self.opencode = OpenCodeRuntime(self.state, self.directory, self.on_request)
         self.process_inventory = {}
         self.installation = {}
         self.workspace_git = {}
@@ -54,10 +70,34 @@ class Service:
         self.files_browser = None
         self.process_requested_at = 0
 
+    def owns_thread(self, tid):
+        seen = set()
+        task_threads = {task.get("threadId") for task in self.state.data["tasks"] if task.get("threadId")}
+        while tid and tid not in seen:
+            seen.add(tid)
+            entity = self.state.data["threads"].get(tid) or self.state.data["archived"].get(tid) or {}
+            if entity.get("managed") or tid in task_threads:
+                return True
+            tid = entity.get("parentThreadId")
+        return False
+
+    def adopt_child(self, info):
+        parent = info.get("parentThreadId")
+        if parent and self.owns_thread(parent):
+            child = self.state.merge_thread(info)
+            child.update(managed=True, codexStorage="private" if self.using_private else "legacy")
+            return True
+        return False
+
     def is_copilot(self, tid):
         return (self.state.data["threads"].get(tid) or self.state.data["archived"].get(tid) or {}).get("provider") == "copilot"
 
+    def is_external(self, tid):
+        return (self.state.data["threads"].get(tid) or self.state.data["archived"].get(tid) or {}).get("provider") in ("copilot", "opencode")
+
     def models_for(self, entity):
+        if entity.get("provider") == "opencode":
+            return [{"model": m["id"], "displayName": m["name"], "supportedReasoningEfforts": []} for m in self.opencode.status.get("models", [])]
         if entity.get("provider") == "copilot":
             return [{"model": m["id"], "displayName": m["name"], "supportedReasoningEfforts": []}
                     for m in self.copilot.status.get("models", [])]
@@ -65,22 +105,26 @@ class Service:
 
     def clear_codex_requests(self):
         for key, request in list(self.state.requests.items()):
-            if request.get("provider") != "copilot":
+            if request.get("provider") not in ("copilot", "opencode"):
                 self.state.requests.pop(key, None)
 
     def providers(self):
         return {
             "codex": {"name": "Codex", "connected": self.state.connected,
                       "status": "connected" if self.state.connected else "connecting",
+                      "sessionStorage": "private" if self.using_private else "migrationPending" if self.private_codex else "custom",
                       "models": [{"id": m["model"], "name": m.get("displayName") or m["model"]}
                                  for m in self.state.models] if self.state.connected else []},
+            "opencode": self.opencode.status,
             "copilot": {**self.copilot.status, "expectedHost": self.state.data["settings"].get("copilotHost"),
                         "repositoryVerification": self.state.data["settings"].get("repositoryVerification")},
         }
 
     def on_request(self, request):
-        self.state.requests[str(request["id"])] = request
         tid = request.get("params", {}).get("threadId")
+        if tid and not self.owns_thread(tid):
+            return
+        self.state.requests[str(request["id"])] = request
         if tid:
             t = self.state.thread(tid)
             flag = "waitingOnUserInput" if "requestUserInput" in request["method"] else "waitingOnApproval"
@@ -103,10 +147,12 @@ class Service:
     async def refresh_unlocked(self):
         threads = await self.pages("thread/list", {"limit": 100, "sortKey": "updated_at", "sourceKinds": SOURCE_KINDS})
         for info in threads:
+            if not self.owns_thread(info["id"]) and not self.adopt_child(info):
+                continue
             self.state.data["archived"].pop(info["id"], None)
             self.state.merge_thread(info)
         for tid, t in list(self.state.data["threads"].items()):
-            if (t.get("managed") or tid in self.selected or t.get("status", {}).get("type") == "active") and tid not in self.subscribed:
+            if self.owns_thread(tid) and (t.get("managed") or tid in self.selected or t.get("status", {}).get("type") == "active") and tid not in self.subscribed:
                 try:
                     await self.subscribe(tid)
                 except RpcError as error:
@@ -119,9 +165,10 @@ class Service:
 
     async def archives(self):
         infos = await self.pages("thread/list", {"archived": True, "limit": 100, "sortKey": "updated_at", "sourceKinds": SOURCE_KINDS})
+        infos = [info for info in infos if self.owns_thread(info["id"])]
         ids = {info["id"] for info in infos}
         for tid in list(self.state.data["archived"]):
-            if tid not in ids and not self.is_copilot(tid):
+            if tid not in ids and not self.is_external(tid):
                 self.state.data["archived"].pop(tid, None)
         for info in infos:
             tid = info["id"]
@@ -132,10 +179,12 @@ class Service:
             self.subscribed.discard(tid)
             self.selected.discard(tid)
         self.state.save()
-        return {"archived": self.state.data["archived"]}
+        return {"archived": {tid: t for tid, t in self.state.data["archived"].items() if self.owns_thread(tid)}}
 
     async def subscribe(self, tid):
-        if self.is_copilot(tid):
+        if not self.owns_thread(tid):
+            raise ValueError("This session belongs to another application")
+        if self.is_external(tid):
             self.subscribed.add(tid)
             return self.state.thread(tid)
         if tid in self.observed:
@@ -163,6 +212,9 @@ class Service:
         return t
 
     def codex_event(self, method, params):
+        tid = params.get("threadId") or params.get("thread", {}).get("id")
+        if tid and not self.owns_thread(tid) and not self.adopt_child(params.get("thread", {})):
+            return
         self.state.event(method, params)
         if method == "turn/completed" and params.get("threadId"):
             self.copilot_runtime.request_changes(params["threadId"])
@@ -182,14 +234,68 @@ class Service:
                     self.copilot_runtime.request_changes(tid)
             await asyncio.sleep(3)
 
+    async def migrate_codex_sessions(self):
+        if not self.private_codex:
+            return
+        legacy = [t for bucket in ("threads", "archived") for t in self.state.data[bucket].values()
+                  if self.owns_thread(t["id"]) and t.get("provider", "codex") == "codex"
+                  and t.get("codexStorage") != "private"]
+        if not legacy:
+            return
+        shared = Rpc(self.legacy_command, lambda *_: None, lambda *_: None)
+        try:
+            await shared.connect()
+            infos = {}
+            for t in legacy:
+                tid = t["id"]
+                info = (await shared.call("thread/read", {"threadId": tid, "includeTurns": False}))["thread"]
+                infos[tid] = info
+                if info.get("status", {}).get("type") == "active":
+                    raise MigrationBusy("Waiting for existing Codex agents to finish before isolating their history from VS Code")
+            for t in legacy:
+                tid = t["id"]
+                info = infos[tid]
+                source = Path(info.get("path") or "")
+                if not source.is_file():
+                    raise RpcError("Cannot migrate this Codex agent: its saved session file is unavailable")
+                destination = self.codex_home / "sessions" / source.name
+                destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                # Keep the original until the private server has read the copy.
+                if not destination.exists():
+                    temporary = destination.with_suffix(".tmp")
+                    shutil.copyfile(source, temporary)
+                    os.chmod(temporary, 0o600)
+                    temporary.replace(destination)
+                result = await self.rpc.call("thread/resume", {"threadId": tid, "path": str(destination)})
+                if result["thread"]["id"] != tid:
+                    raise RpcError("Codex migration returned an unexpected session identifier")
+                if tid in self.state.data["archived"]:
+                    await self.rpc.call("thread/archive", {"threadId": tid})
+                # Archive the shared original; do not delete it or any IDE session.
+                if tid in self.state.data["threads"]:
+                    await shared.call("thread/archive", {"threadId": tid})
+                t["codexStorage"] = "private"
+                self.state.save()
+        finally:
+            await shared.close()
+
     async def connection_loop(self):
         while not self.stop.is_set():
-            self.rpc = Rpc(self.command, self.codex_event, self.on_request)
+            self.rpc = Rpc(self.command, self.codex_event, self.on_request, env=self.codex_env)
             try:
                 await self.rpc.connect()
                 self.subscribed.clear()
                 self.observed.clear()
                 self.clear_codex_requests()
+                self.using_private = self.private_codex
+                try:
+                    await self.migrate_codex_sessions()
+                except MigrationBusy:
+                    # Keep approvals, steering and output available until old turns finish.
+                    await self.rpc.close()
+                    self.rpc = Rpc(self.legacy_command, self.codex_event, self.on_request)
+                    await self.rpc.connect()
+                    self.using_private = False
                 self.state.models = await self.pages("model/list", {})
                 await self.refresh()
                 self.state.connected = True
@@ -197,9 +303,14 @@ class Service:
                 while not self.rpc.reader_task.done() and not self.stop.is_set():
                     await asyncio.sleep(5)
                     await self.refresh()
+                    if self.private_codex and not self.using_private and not any(
+                            self.owns_thread(t["id"]) and t.get("provider", "codex") == "codex"
+                            and t.get("status", {}).get("type") == "active"
+                            for t in self.state.data["threads"].values()):
+                        break
                 if self.rpc.reader_task.done():
                     self.rpc.reader_task.result()
-                    raise RpcError("Codex proxy disconnected. " + self.rpc.stderr[-500:])
+                    raise RpcError("Codex server disconnected. " + self.rpc.stderr[-500:])
             except (OSError, ValueError, RpcError, asyncio.TimeoutError) as error:
                 self.state.error = str(error)
             finally:
@@ -244,7 +355,7 @@ class Service:
             if self.state.dirty:
                 self.state.save()
             # Keep an existing sleep assertion across a transient connection loss.
-            active = any(t.get("status", {}).get("type") == "active" for t in self.state.data["threads"].values())
+            active = any(self.owns_thread(t["id"]) and t.get("status", {}).get("type") == "active" for t in self.state.data["threads"].values())
             active = active and self.state.data["settings"].get("keepAwake", True)
             if sys.platform == "darwin":
                 if active and (self.caffeine is None or self.caffeine.returncode is not None):
@@ -263,7 +374,7 @@ class Service:
         while not self.stop.is_set():
             if time.monotonic() - self.process_requested_at < 10:
                 try:
-                    self.process_inventory = await inventory(dict(self.state.data["threads"]))
+                    self.process_inventory = await inventory({tid: t for tid, t in self.state.data["threads"].items() if self.owns_thread(tid)})
                 except (OSError, asyncio.TimeoutError):
                     self.process_inventory = {"rows": [], "error": "Process inventory unavailable", "checkedAt": time.time()}
             await asyncio.sleep(5)
@@ -281,6 +392,8 @@ class Service:
 
     async def dispatch(self, req):
         action = req.get("action")
+        if action in ("select", "send", "rename", "archive", "read_archive", "restore", "interrupt", "remove", "prepare_review") and not self.owns_thread(req.get("threadId")):
+            raise ValueError("This session belongs to another application")
         if action == "diagnostics":
             self.installation = await asyncio.to_thread(local_report, self.command[0])
             return self.installation
@@ -321,6 +434,8 @@ class Service:
         if action == "snapshot":
             entity = next((self.state.data.get(bucket, {}).get(req.get("threadId")) for bucket in ("threads", "archived")
                            if self.state.data.get(bucket, {}).get(req.get("threadId"))), None)
+            if entity and not self.owns_thread(entity["id"]):
+                entity = None
             if entity:
                 self.workspace_requested = workspace_root(entity)
             if req.get("view") == "setup" and entity:
@@ -330,6 +445,8 @@ class Service:
             if req.get("view") == "processes":
                 self.process_requested_at = time.monotonic()
             snapshot = self.state.snapshot()
+            for bucket in ("threads", "archived"):
+                snapshot[bucket] = {tid: t for tid, t in snapshot[bucket].items() if self.owns_thread(tid)}
             hidden = set(self.state.data["hidden"])
             snapshot["hiddenThreads"] = {tid: t for tid, t in snapshot["threads"].items() if tid in hidden}
             snapshot["threads"] = {tid: t for tid, t in snapshot["threads"].items() if tid not in hidden}
@@ -397,8 +514,8 @@ class Service:
                 raise ValueError("Select an existing agent, task or project profile")
             key = "config" if scope == "project" else "agentConfig"
             patch = validate_patch(req.get("patch", {}))
-            if owner.get("provider") == "copilot" and set(patch) & {"fileAccess", "approvalMode", "networkAccess", "effort", "tier"}:
-                raise ValueError("Copilot uses its CLI permission policy and model defaults; Codex sandbox and speed settings do not apply")
+            if owner.get("provider") in ("copilot", "opencode") and set(patch) & {"fileAccess", "approvalMode", "networkAccess", "effort", "tier"}:
+                raise ValueError("This provider uses its own CLI permission policy and model defaults; Codex sandbox and speed settings do not apply")
             if scope == "agent" and owner.get("agentWorktree") and set(patch) & {"useWorktree", "baseBranch"}:
                 raise ValueError("This agent already has a worktree. Create another agent to use a different base or workspace mode.")
             config = {} if req.get("reset") else {**owner.get(key, {}), **patch}
@@ -463,14 +580,14 @@ class Service:
                 source = self.state.data["threads"].get(tid)
                 if not source or source.get("status", {}).get("type") == "active":
                     raise ValueError("Wait until the source agent is ready, or interrupt it before handing over")
-                if source.get("provider") != "copilot":
+                if source.get("provider", "codex") == "codex":
                     if not self.state.connected:
                         raise ValueError("Reconnect Codex so the source agent's status can be verified")
                     current = await self.rpc.call("thread/read", {"threadId": tid, "includeTurns": False})
                     if current["thread"].get("status", {}).get("type") == "active":
                         raise ValueError("The source agent is still active; wait or interrupt before handing over")
                 provider = req.get("provider")
-                if provider not in ("codex", "copilot"):
+                if provider not in ("codex", "copilot", "opencode"):
                     raise ValueError("Choose a provider")
                 model = req.get("model") or ""
                 validate_engine({"model": model, "effort": "", "tier": ""}, self.models_for({"provider": provider}))
@@ -487,7 +604,7 @@ class Service:
                                   projectRoot=project_root(source), handoffFrom=tid, handoffContext=context,
                                   handoffOmitted=omitted, handoffPreparing=False, status={"type": "idle"}, activity="Handoff prepared; send a message to begin")
                     config = effective_config(self.state.data, "thread:" + tid)
-                    config.update(model=model, effort="", tier="", fileAccess="Keep current", approvalMode="Keep current", copilotAccess="Ask")
+                    config.update(model=model, effort="", tier="", fileAccess="Keep current", approvalMode="Keep current", copilotAccess="Ask", opencodeAccess="Ask")
                     target["agentConfig"] = config
                     source.setdefault("handoffs", []).append(target["id"])
                     self.state.save()
@@ -506,12 +623,14 @@ class Service:
             self.state.save()
             return {}
         tid = req.get("threadId")
-        copilot_action = self.is_copilot(tid) or (action == "create_agent" and req.get("provider") == "copilot")
+        external_action = self.is_external(tid) or (action == "create_agent" and req.get("provider") in ("copilot", "opencode"))
         if action == "respond":
             pending = self.state.requests.get(str(req.get("requestId")))
+            if pending and pending.get("provider") == "opencode":
+                return await self.opencode.respond(pending, req["response"])
             if pending and pending.get("provider") == "copilot":
                 return await self.copilot_runtime.respond(pending, req["response"])
-        if copilot_action and action in ("rename", "archive", "restore", "read_archive", "interrupt"):
+        if external_action and action in ("rename", "archive", "restore", "read_archive", "interrupt"):
             async with self.locks.setdefault("catalog", asyncio.Lock()):
                 async with self.locks.setdefault(tid, asyncio.Lock()):
                     collection = "archived" if tid in self.state.data["archived"] else "threads"
@@ -523,6 +642,8 @@ class Service:
                         t["name"] = name
                     elif action == "read_archive":
                         return t
+                    elif action == "interrupt" and t.get("provider") == "opencode":
+                        await self.opencode.interrupt(t)
                     elif action == "interrupt":
                         if tid not in self.copilot_runtime.sessions:
                             raise ValueError("No connected Copilot turn to interrupt")
@@ -540,28 +661,30 @@ class Service:
                     self.state.save()
                     return {"threadId": tid, "name": t.get("name")}
         if action == "archives" and not self.state.connected:
-            return {"archived": self.state.data["archived"]}
-        if not self.state.connected and not copilot_action:
+            return {"archived": {tid: t for tid, t in self.state.data["archived"].items() if self.owns_thread(tid)}}
+        if not self.state.connected and not external_action:
             raise RpcError(self.state.error or "Codex is disconnected")
+        if action in ("create_agent", "start") and req.get("provider", "codex") == "codex" and self.private_codex and not self.using_private:
+            raise RpcError("Existing Codex agents must finish before creating a new isolated agent; their chat and approvals remain available")
         if action == "create_agent":
             name = req.get("name", "").strip()
             if not name or len(name) > 100 or not all(c.isprintable() for c in name):
                 raise ValueError("Enter a name of 1–100 characters")
             model = req.get("model") or ""
             provider = req.get("provider", "codex")
-            if provider not in ("codex", "copilot"):
-                raise ValueError("Choose Codex or Copilot")
-            if provider == "copilot":
-                if not self.copilot.status.get("connected"):
-                    raise RpcError("Copilot is not connected")
+            if provider not in ("codex", "copilot", "opencode"):
+                raise ValueError("Choose Codex, Copilot or OpenCode")
+            if provider in ("copilot", "opencode"):
+                if not self.providers()[provider].get("connected"):
+                    raise RpcError(provider + " is not connected")
                 validate_engine({"model": model, "effort": "", "tier": ""}, self.models_for({"provider": provider}))
             else:
                 self.validate_model(model or None, None)
             workspace = self.directory / "agents" / str(uuid.uuid4())
             workspace.mkdir(parents=True, mode=0o700)
-            if provider == "copilot":
-                t = self.state.thread("copilot-" + str(uuid.uuid4()))
-                t.update(provider="copilot", managed=True, name=name, cwd=str(workspace), model=model,
+            if provider in ("copilot", "opencode"):
+                t = self.state.thread(provider + "-" + str(uuid.uuid4()))
+                t.update(provider=provider, managed=True, name=name, cwd=str(workspace), model=model,
                          status={"type": "idle"}, agentConfig={"model": model}, inheritsSetupEngine=True)
                 self.subscribed.add(t["id"])
                 self.state.save()
@@ -571,7 +694,7 @@ class Service:
                 params["model"] = model
             result = await self.rpc.call("thread/start", params)
             t = self.state.merge_thread(result["thread"])
-            t.update(reportedAccess={"sandbox": result.get("sandbox"), "approvalPolicy": result.get("approvalPolicy")}, managed=True, name=name, model=result.get("model"), agentConfig={"model": model}, inheritsSetupEngine=True)
+            t.update(codexStorage="private" if self.using_private else "legacy", reportedAccess={"sandbox": result.get("sandbox"), "approvalPolicy": result.get("approvalPolicy")}, managed=True, name=name, model=result.get("model"), agentConfig={"model": model}, inheritsSetupEngine=True)
             self.subscribed.add(t["id"])
             self.state.save()
             await self.rpc.call("thread/name/set", {"threadId": t["id"], "name": name})
@@ -647,7 +770,7 @@ class Service:
                             params["model"] = settings["model"]
                         result = await self.rpc.call("thread/start", params)
                         t = self.state.merge_thread(result["thread"])
-                        t.update(managed=True, name=task["title"], model=result.get("model"), reasoningEffort=result.get("reasoningEffort"))
+                        t.update(codexStorage="private" if self.using_private else "legacy", managed=True, name=task["title"], model=result.get("model"), reasoningEffort=result.get("reasoningEffort"))
                         t["nextModel"], t["nextEffort"] = settings.get("model"), settings.get("effort")
                         t["projectRoot"] = task["repo"]
                         t["inheritsSetupEngine"] = True
@@ -790,6 +913,9 @@ class Service:
         conflicts = guidance_conflicts(self.state.data.get("projectProfiles", {}).get(project_root(t), {}), config)
         if conflicts:
             params["additionalContext"]["dashboard-setup"]["value"] += "\n\n## Instruction conflicts\n" + "\n".join("- " + c for c in conflicts)
+        if t.get("provider") == "opencode":
+            validate_engine(config, self.models_for(t))
+            return await self.opencode.message(t, text, config, params["additionalContext"], client_id)
         if t.get("provider") == "copilot":
             validate_engine(config, self.models_for(t), t)
             return await self.copilot_runtime.message(t, text, config, params["additionalContext"], client_id)
@@ -874,7 +1000,7 @@ class Service:
         for t in self.state.data["threads"].values():
             if t.get("handoffPreparing"):
                 t.update(handoffPreparing=False, status={"type": "idle"}, activity="Handoff preparation was interrupted; inspect the workspace before continuing")
-            if t.get("provider") == "copilot" and t.get("status", {}).get("type") == "active":
+            if t.get("provider") in ("copilot", "opencode") and t.get("status", {}).get("type") == "active":
                 t.update(status={"type": "idle"}, turnId=None, lastTurnStatus="interrupted", activity="Service restarted; send a message to resume")
         for task in self.state.data["tasks"]:
             if task["status"] == "starting":
@@ -887,6 +1013,7 @@ class Service:
             loop.add_signal_handler(sig, self.stop.set)
         jobs = [asyncio.create_task(self.check_installation()), asyncio.create_task(self.connection_loop()), asyncio.create_task(self.maintain()),
                 asyncio.create_task(self.monitor_processes()), asyncio.create_task(self.monitor_workspace()), asyncio.create_task(self.monitor_files()),
+                asyncio.create_task(self.opencode.run(self.stop)),
                 asyncio.create_task(self.copilot.run(self.stop, self.directory,
                                     lambda: self.state.data["settings"].get("copilotHost")))]
         try:
@@ -898,6 +1025,7 @@ class Service:
                 job.cancel()
             await asyncio.gather(*jobs, return_exceptions=True)
             await self.copilot_runtime.close()
+            await self.opencode.close()
             if self.rpc:
                 await self.rpc.close()
             if self.caffeine and self.caffeine.returncode is None:

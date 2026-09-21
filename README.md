@@ -6,7 +6,7 @@
 
 **Independent coding agents. Isolated workspaces. One terminal.**
 
-Tyrell brings **Codex** and **GitHub Copilot** agents together in a local terminal
+Tyrell brings **Codex**, **GitHub Copilot** and **OpenCode** agents together in a local terminal
 app. Each agent has its own conversation, model, plan and working folder, so you
 can run several tasks side by side and review their results in one place.
 
@@ -23,8 +23,9 @@ brew tap micke232/tyrell-agent-management https://github.com/micke232/tyrell-age
 brew install tyrell
 ```
 
-Install **Codex CLI**, **GitHub Copilot CLI**, or both separately. Each provider
-needs its own account and sign-in. Tyrell's setup guides you through the connections:
+Install the CLI for the provider(s) you want to use separately. You supply your
+own model access; [OpenCode also supports local models](docs/opencode.md).
+Tyrell's setup guides you through the connections:
 
 ```sh
 tyrell setup

@@ -181,7 +181,7 @@ def providers(data):
 def connection_badges(data, available, demo=False):
     values = providers(data)
     result = []
-    for key, name in (("codex", "Codex"), ("copilot", "Copilot")):
+    for key, name in (("codex", "Codex"), ("copilot", "Copilot"), ("opencode", "OpenCode")):
         state = values.get(key, {}).get("status", "offline")
         label, tone = LABELS.get(state, LABELS["offline"])
         if demo:
@@ -190,12 +190,14 @@ def connection_badges(data, available, demo=False):
     if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
         short = {"Connected": "Online", "Connecting": "Wait", "Not installed": "Missing", "Unavailable": "Limited", "Switch account": "Account"}
         result = [(name, short.get(label, label), tone, dot) for name, label, tone, dot in result]
+    if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
+        return [(dot + " " + name, tone) for name, _, tone, dot in result]
     return [(dot + " " + name + " " + label, tone) for name, label, tone, dot in result]
 
 
 def connections_text(data, demo=False):
     lines = ["CONNECTIONS" + (" · DEMO" if demo else ""), ""]
-    for key, name in (("codex", "Codex"), ("copilot", "GitHub Copilot")):
+    for key, name in (("codex", "Codex"), ("copilot", "GitHub Copilot"), ("opencode", "OpenCode")):
         info = providers(data).get(key, {})
         state = info.get("status", "offline")
         label = "Demo" if demo else LABELS.get(state, LABELS["offline"])[0]
@@ -204,6 +206,9 @@ def connections_text(data, demo=False):
         if state == "connected" and not demo:
             lines.append("Reported models (%d):" % len(models))
             lines.extend("  " + m.get("name", m.get("id", "Unknown")) for m in models)
+        if key == "opencode":
+            lines.append("Install OpenCode CLI and configure your own model access: tyrell login opencode")
+            lines.append("Local models are supported. No subscription or model access is included with Tyrell.")
         if key == "copilot":
             host = info.get("expectedHost") or info.get("host")
             if host:

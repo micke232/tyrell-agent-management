@@ -56,8 +56,8 @@ directly to `main`.
    ```sh
    git switch main
    git pull --ff-only
-   git tag v0.2.0a6
-   git push origin v0.2.0a6
+   git tag v0.2.0a7
+   git push origin v0.2.0a7
    ```
 
 4. Wait for Checks. Review the generated draft under GitHub Releases, mark alpha
@@ -95,7 +95,7 @@ python3.14 -m venv .venv
 HOMEBREW_DEVELOPER=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
   brew ruby scripts/verify_homebrew.rb \
   "$PWD/Formula/tyrell.rb" \
-  "$PWD/dist/homebrew/tyrell-0.2.0a6-homebrew.tar.gz"
+  "$PWD/dist/homebrew/tyrell-0.2.0a7-homebrew.tar.gz"
 ```
 
 Use the current version's wheel filename and an empty build output directory when

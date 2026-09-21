@@ -28,6 +28,10 @@ jobs:
           python-version: '3.14'
       - name: Test
         run: python -B -m unittest discover -s tests
+      - name: Test OpenCode adapter with a local model fixture
+        run: |
+          npm install --prefix .test-runtime/opencode --no-audit --no-fund opencode-ai@1.18.31
+          python -B scripts/check_opencode.py "$PWD/.test-runtime/opencode/node_modules/.bin/opencode"
       - name: Verify release tag
         if: startsWith(github.ref, 'refs/tags/')
         run: |
