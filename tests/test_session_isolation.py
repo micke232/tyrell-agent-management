@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import unittest
@@ -127,6 +128,36 @@ class IsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([c.args[0] for c in shared.call.call_args_list], ['thread/read','thread/archive'])
         self.assertEqual(s.state.thread('owned')['codexStorage'], 'private')
         self.assertIn(('thread/name/set', {'threadId': 'owned', 'name': 'owned'}), [c.args for c in s.rpc.call.call_args_list])
+
+    async def test_writer_conflict_during_migration_keeps_legacy_connection_available(self):
+        s = self.service
+        s.stop = asyncio.Event()
+        s.migrate_codex_sessions = AsyncMock(side_effect=RpcError('already has an active writer'))
+        s.pages = AsyncMock(return_value=[])
+        s.refresh = AsyncMock(side_effect=s.stop.set)
+        rpc = AsyncMock()
+        rpc.reader_task.done = lambda: False
+        with patch('tyrell.service.Rpc', return_value=rpc):
+            await s.connection_loop()
+        self.assertFalse(s.using_private)
+        self.assertEqual(rpc.connect.await_count, 2)
+        s.refresh.assert_awaited_once()
+        self.assertIsNone(s.state.error)
+
+    async def test_active_writer_defers_migration_without_archiving(self):
+        from tyrell.service import MigrationBusy
+        s = self.service
+        s.private_codex = True
+        s.codex_home = self.root/'private'
+        source = self.root/'rollout.jsonl'; source.write_text('saved history')
+        shared = AsyncMock()
+        shared.call.return_value = {'thread': {'id':'owned','path':str(source),'status':{'type':'idle'}}}
+        s.rpc.call.side_effect = RpcError('thread owned already has an active writer')
+        with patch('tyrell.service.Rpc', return_value=shared):
+            with self.assertRaises(MigrationBusy):
+                await s.migrate_codex_sessions()
+        self.assertEqual([c.args[0] for c in shared.call.call_args_list], ['thread/read'])
+        self.assertNotIn('codexStorage', s.state.thread('owned'))
 
     async def test_failed_migration_never_archives_original(self):
         s = self.service

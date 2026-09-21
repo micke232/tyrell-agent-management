@@ -272,7 +272,12 @@ class Service:
                     os.chmod(temporary, 0o600)
                     temporary.replace(destination)
                 saved_name = t.get("name")
-                result = await self.rpc.call("thread/resume", {"threadId": tid, "path": str(destination)})
+                try:
+                    result = await self.rpc.call("thread/resume", {"threadId": tid, "path": str(destination)})
+                except RpcError as error:
+                    if "already has an active writer" in str(error).lower():
+                        raise MigrationBusy("Waiting for the existing session writer before migrating") from error
+                    raise
                 if result["thread"]["id"] != tid:
                     raise RpcError("Codex migration returned an unexpected session identifier")
                 if saved_name:
@@ -299,14 +304,18 @@ class Service:
                 self.observed.clear()
                 self.clear_codex_requests()
                 self.using_private = self.private_codex
+                migration_retry_at = 0
                 try:
                     await self.migrate_codex_sessions()
-                except MigrationBusy:
+                except RpcError as error:
+                    if not isinstance(error, MigrationBusy) and "already has an active writer" not in str(error).lower():
+                        raise
                     # Keep approvals, steering and output available until old turns finish.
                     await self.rpc.close()
                     self.rpc = Rpc(self.legacy_command, self.codex_event, self.on_request)
                     await self.rpc.connect()
                     self.using_private = False
+                    migration_retry_at = time.monotonic() + 60
                 self.state.models = await self.pages("model/list", {})
                 await self.refresh()
                 self.state.connected = True
@@ -314,7 +323,7 @@ class Service:
                 while not self.rpc.reader_task.done() and not self.stop.is_set():
                     await asyncio.sleep(5)
                     await self.refresh()
-                    if self.private_codex and not self.using_private and not any(
+                    if self.private_codex and not self.using_private and time.monotonic() >= migration_retry_at and not any(
                             self.owns_thread(t["id"]) and t.get("provider", "codex") == "codex"
                             and t.get("status", {}).get("type") == "active"
                             for t in self.state.data["threads"].values()):
