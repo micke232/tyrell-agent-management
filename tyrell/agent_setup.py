@@ -23,6 +23,7 @@ SECTIONS = [
         field("tier", "Speed", "tier", "", "Fast uses the model's advertised service tier and can increase usage."),
     ]),
     ("Access", [
+        field("opencodeAccess", "OpenCode permissions", "choice", "Ask", "Ask reviews tool permissions. Autonomous allows tools without routine approval prompts. This is not a filesystem sandbox; model questions still need answers. Applies to the next new turn.", ("Ask", "Autonomous")),
         field("copilotAccess", "Copilot permissions", "choice", "Ask", "Ask shows CLI permission requests. Autonomous allows tools, files and network without routine prompts; organization policy still applies. Changes apply to the next new turn.", ("Ask", "Autonomous")),
         field("fileAccess", "File access", "choice", "Keep current", "Applies to the next turn. Workspace allows writes in the selected folder; Full access removes file restrictions.", ("Keep current", "Read only", "Workspace", "Full access")),
         field("approvalMode", "Approval requests", "choice", "Keep current", "On request asks when more permission is needed. Never shows no approval dialogs; sandbox limits still apply. Full access + Never allows autonomous execution.", ("Keep current", "On request", "Never")),
@@ -177,7 +178,7 @@ def effective_config(data, target=None, project=None, defaults_only=False):
             if not entity.get("inheritsSetupEngine"):
                 result.update({k: entity[v] for k, v in (("model", "nextModel"), ("effort", "nextEffort")) if entity.get(v)})
             result.update(entity.get("agentConfig", {}))
-    if entity.get("provider") == "copilot" and not defaults_only:
+    if entity.get("provider") in ("copilot", "opencode") and not defaults_only:
         # Provider-specific engine/access values never inherit Codex defaults.
         own = entity.get("agentConfig", {})
         result.update(model=own.get("model", ""), effort="", tier="",
@@ -193,7 +194,7 @@ def model_info(config, models, entity=None):
 def choices_for(key, config, models, entity=None):
     model = model_info(config, models, entity)
     if key == "model":
-        return [("", "Keep current / " + ("Copilot" if (entity or {}).get("provider") == "copilot" else "Codex") + " default")] + [(m["model"], m.get("displayName", m["model"])) for m in models if not m.get("hidden")]
+        return [("", "Keep current / " + {"copilot": "Copilot", "opencode": "OpenCode"}.get((entity or {}).get("provider"), "Codex") + " default")] + [(m["model"], m.get("displayName", m["model"])) for m in models if not m.get("hidden")]
     if key == "effort":
         return [("", "Keep current / model default")] + [(e["reasoningEffort"], e["reasoningEffort"].capitalize()) for e in model.get("supportedReasoningEfforts", [])]
     if key == "tier":

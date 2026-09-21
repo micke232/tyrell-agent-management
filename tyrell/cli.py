@@ -20,10 +20,11 @@ from tyrell import __version__
 from tyrell.paths import state_directory
 from tyrell.hub_settings import local_report, diagnostics_text, provider_guide
 from tyrell.client import ensure_service, request
-from tyrell.rpc import Rpc
+from tyrell.codex_storage import environment as codex_environment
 from tyrell.service import Service
 from tyrell.ui import Dashboard
 from tyrell.connections import copilot_executable, normalize_host
+from tyrell.opencode_runtime import opencode_executable
 from tyrell.terminal_setup import setup_terminal
 from tyrell.startup import Startup, provider_status
 
@@ -67,17 +68,6 @@ def prepare_dashboard(directory, codex, first_run):
     return ui
 
 
-async def doctor(codex):
-    rpc = Rpc([codex, "app-server", "proxy"], lambda *_: None, lambda *_: None)
-    try:
-        await rpc.connect()
-        models = await rpc.call("model/list", {})
-        threads = await rpc.call("thread/list", {"limit": 1})
-        return {"connected": True, "models": len(models["data"]), "threadList": "ok", "codex": codex}
-    finally:
-        await rpc.close()
-
-
 def main():
     parser = argparse.ArgumentParser(prog="tyrell", description="Tyrell Agent Management. Closing the UI leaves agent work running.")
     parser.add_argument("--version", action="version", version="Tyrell Agent Management " + __version__)
@@ -94,7 +84,7 @@ def main():
     sub.add_parser("demo", help="Preview the terminal interface with example data")
     sub.add_parser("connections", help="Show Codex and Copilot connection status and reported models")
     login = sub.add_parser("login", help="Sign in to an agent provider using its own CLI")
-    login.add_argument("provider", choices=["codex", "copilot"])
+    login.add_argument("provider", choices=["codex", "copilot", "opencode"])
     login.add_argument("--host", help="GitHub host, for example https://company.ghe.com")
     plan = sub.add_parser("plan", help="Save a planned task without starting it")
     plan.add_argument("--repo", required=True)
@@ -133,6 +123,7 @@ def main():
                 print(diagnostics_text(report))
                 print("\n" + provider_guide("codex"))
                 print("\n" + provider_guide("copilot"))
+                print("\n" + provider_guide("opencode"))
                 print("\nStart with: tyrell\nF10 Settings shows connections and lets you change the GitHub host.")
             return
         if args.command == "stop":
@@ -146,19 +137,27 @@ def main():
         if args.command == "start-provider":
             report = local_report(args.codex)["providers"]["codex"]
             if not report["compatible"]:
-                raise RuntimeError("Codex CLI lacks required proxy/daemon support. Run tyrell doctor and install a compatible CLI.")
-            if subprocess.call([args.codex, "app-server", "daemon", "start"]):
-                raise RuntimeError("Codex server could not start")
+                raise RuntimeError("Codex CLI lacks required app-server stdio support. Run tyrell doctor and install a compatible CLI.")
+            ensure_service(directory, args.codex)
+            print("Tyrell owns its private Codex server; connection status is available in F10 Settings.")
             return
         if args.command == "demo":
             demo = json.loads((Path(__file__).parent / "demo.json").read_text())
             run_dashboard(Dashboard(directory, demo))
             return
+        if args.command == "login" and args.provider == "opencode":
+            executable = opencode_executable()
+            if not executable:
+                raise RuntimeError("Install OpenCode CLI before signing in")
+            if subprocess.call([executable, "auth", "login"]):
+                raise RuntimeError("OpenCode sign-in did not complete")
+            return
         if args.command == "login" and args.provider == "codex":
             executable = shutil.which(args.codex)
             if not executable:
                 raise RuntimeError("Codex CLI is missing. Run tyrell setup for installation instructions.")
-            if subprocess.call([executable, "login"]):
+            codex_env, _ = codex_environment(directory)
+            if subprocess.call([executable, "login"], env=codex_env):
                 raise RuntimeError("Codex sign-in did not complete")
             return
         if args.command == "login":

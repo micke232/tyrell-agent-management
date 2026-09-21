@@ -10,14 +10,14 @@ import uuid
 
 from .connections import CopilotProbe, copilot_executable, normalize_host
 from .rpc import RpcError
-from .workspace_changes import changes
+from .provider_runtime import ProviderRuntime
 
 
 class CopilotRequestUncertain(RpcError):
     pass
 
 
-class CopilotRuntime(CopilotProbe):
+class CopilotRuntime(CopilotProbe, ProviderRuntime):
     def __init__(self, state, directory, expected_host, on_request):
         super().__init__()
         self.state, self.directory = state, directory
@@ -120,46 +120,10 @@ class CopilotRuntime(CopilotProbe):
         elif "id" in message:
             await self.send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "Unsupported client request"}})
 
-    def emit(self, tid, method, **params):
-        self.state.event(method, dict(threadId=tid, **params))
 
-    def schedule(self, coroutine):
-        task = asyncio.create_task(coroutine)
-        self.background.add(task)
-        task.add_done_callback(self.background.discard)
 
-    def request_changes(self, tid):
-        existing = self.diff_jobs.get(tid)
-        if existing and not existing.done():
-            self.diff_again.add(tid)
-            return
-        async def delayed():
-            while True:
-                self.diff_again.discard(tid)
-                await asyncio.sleep(1)
-                await self.collect_changes(tid)
-                if tid not in self.diff_again:
-                    break
-        task = asyncio.create_task(delayed())
-        self.diff_jobs[tid] = task
-        self.background.add(task)
-        task.add_done_callback(self.background.discard)
 
-    async def collect_changes(self, tid):
-        t = self.state.thread(tid)
-        try:
-            records = await changes(t.get("setupCwd") or t["cwd"], t.get("agentWorktree", {}).get("baseCommit"))
-            t.update(changedFiles=records, filesSource="git", filesBase=records.base,
-                     filesError=("Showing the first 250 of %d changed files." % records.total) if records.truncated else None)
-        except (OSError, ValueError, asyncio.TimeoutError):
-            t["filesError"] = "Git diff unavailable or too large; reported file operations remain visible."
-        self.state.dirty = True
 
-    def finish(self, tid, status):
-        t = self.state.thread(tid)
-        if t.get("turnId"):
-            self.emit(tid, "turn/completed", turn={"id": t["turnId"], "status": status})
-            self.request_changes(tid)
 
     def event(self, tid, event):
         kind, data = event.get("type"), event.get("data", {})
@@ -217,12 +181,6 @@ class CopilotRuntime(CopilotProbe):
             self.emit(tid, "item/completed", item={"id": str(uuid.uuid4()), "type": "agentMessage",
                       "text": "Copilot could not complete this turn. Check its connection and model access before retrying."})
 
-    def refresh_waiting(self, tid):
-        requests = [r for r in self.state.requests.values() if r.get("params", {}).get("threadId") == tid]
-        t = self.state.thread(tid)
-        if t.get("status", {}).get("type") == "active":
-            t["status"]["activeFlags"] = (["waitingOnUserInput" if "requestUserInput" in requests[0]["method"] else "waitingOnApproval"] if requests else [])
-        self.state.dirty = True
 
     async def respond(self, request, response):
         tid = request["params"]["threadId"]

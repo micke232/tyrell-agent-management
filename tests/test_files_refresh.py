@@ -17,7 +17,7 @@ class FilesRefreshTests(unittest.IsolatedAsyncioTestCase):
             await git('init', '-b', 'main', str(repo))
             await git('-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'initial')
             s = Service(Path(directory)/'state', ['unused'])
-            t = s.state.thread('fixture'); t.update(cwd=str(repo), setupCwd=str(repo))
+            t = s.state.thread('fixture'); t.update(managed=True, cwd=str(repo), setupCwd=str(repo))
             (repo/'new.txt').write_text('new file')
             s.codex_event('turn/started', {'threadId':'fixture', 'turn':{'id':'turn'}})
             s.codex_event('turn/completed', {'threadId':'fixture', 'turn':{'id':'turn','status':'completed'}})

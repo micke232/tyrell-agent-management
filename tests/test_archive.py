@@ -20,6 +20,7 @@ class ArchiveTests(unittest.IsolatedAsyncioTestCase):
         self.service.state.connected = True
         result = await self.service.rpc.call("thread/start", {"cwd": self.temp.name})
         self.tid = result["thread"]["id"]
+        self.service.state.thread(self.tid)["managed"] = True
 
     async def asyncTearDown(self):
         await self.service.rpc.close()

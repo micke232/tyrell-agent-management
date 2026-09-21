@@ -135,5 +135,5 @@ class ConnectionUIChecks(unittest.TestCase):
         ui = self.make_ui()
         ui.updates.put(("offline", "Socket disconnected"))
         ui.update()
-        self.assertEqual([p["status"] for p in ui.data["providers"].values()], ["offline", "offline"])
-        self.assertEqual([p["models"] for p in ui.data["providers"].values()], [[], []])
+        self.assertEqual([p["status"] for p in ui.data["providers"].values()], ["offline", "offline", "offline"])
+        self.assertEqual([p["models"] for p in ui.data["providers"].values()], [[], [], []])

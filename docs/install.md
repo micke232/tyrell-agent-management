@@ -2,7 +2,7 @@
 
 They work. You take the credit.
 
-A terminal dashboard for independent Codex and GitHub Copilot agents.
+A terminal dashboard for independent Codex, GitHub Copilot and OpenCode agents.
 Start the app with `tyrell`. The Python package is `tyrell-agent-management`
 and its module is `tyrell`.
 This is a preview release: macOS is verified; Linux support is experimental.
@@ -20,7 +20,7 @@ pipx ensurepath
 Open a new terminal, then install the wheel you received:
 
 ```sh
-pipx install ./tyrell_agent_management-0.2.0a6-py3-none-any.whl
+pipx install ./tyrell_agent_management-0.2.0a7-py3-none-any.whl
 tyrell
 ```
 
@@ -50,11 +50,12 @@ GitHub host and the local data folder. Click an action or press its displayed ke
 
 - **1**: Codex installation and sign-in instructions.
 - **2**: Copilot installation and sign-in instructions for the selected GitHub host.
+- **3**: OpenCode installation and model access.
 - **D**: Recheck installed CLIs and required features.
 - **H**: Change the GitHub host; use your organization's own hostname when applicable.
 
 The dashboard is not a model runtime. Install and sign into at least one provider's
-CLI separately. You do not need both. Subscriptions, organization policies and
+CLI separately. One connected provider is enough. Subscriptions, organization policies and
 model access come from your own provider account; no accounts or credentials are bundled.
 The dashboard does not silently install CLIs or start browser login.
 
@@ -67,11 +68,18 @@ tyrell doctor
 tyrell start-provider codex
 ```
 
-This integration currently requires `codex app-server proxy` and
-`codex app-server daemon`. An arbitrary Codex CLI version is not guaranteed to work.
-The diagnostics checks for these capabilities; local validation used Codex CLI
-0.155.1. If your CLI does not provide them, use a compatible installation or Copilot.
-Starting the provider is explicit; the hub never silently restarts a shared Codex server.
+Tyrell runs its own `codex app-server --stdio` process. Session files and runtime
+state live under `<Tyrell data folder>/providers/codex`, separate from VS Code.
+Only agents created by Tyrell appear in its sidebar and archive. User configuration
+and existing file-based sign-in are reused; if sign-in is needed, use `tyrell login codex`.
+Closing the dashboard leaves the Tyrell service and its agents running.
+
+On upgrade, idle agents created by older Tyrell versions are copied into the private
+store and verified before their shared originals are archived. The originals remain
+recoverable in Codex's archive; VS Code conversations are untouched. Active agents
+must finish before migration. If migration fails, the original is retained and the
+connection status reports the problem. No history is deleted.
+
 Official installation: https://developers.openai.com/codex/cli/.
 
 ## GitHub Copilot
@@ -95,6 +103,13 @@ The integration requires headless JSON-RPC protocol 3; local validation used
 Copilot CLI 1.0.86. The runtime checks protocol compatibility before starting work.
 Official installation: https://docs.github.com/en/copilot/get-started/cli-quickstart.
 
+## OpenCode
+
+Install OpenCode CLI (`npm install -g opencode-ai`), then configure your own model
+access using `tyrell login opencode`, or configure a local model in OpenCode.
+No OpenCode account is required by Tyrell. See [OpenCode setup](opencode.md) for
+permissions, session isolation and supported CLI features.
+
 ## Troubleshooting
 
 ```sh
@@ -117,7 +132,7 @@ agents are ready, then:
 
 ```sh
 tyrell stop
-pipx install --force ./tyrell_agent_management-0.2.0a6-py3-none-any.whl
+pipx install --force ./tyrell_agent_management-0.2.0a7-py3-none-any.whl
 tyrell
 ```
 

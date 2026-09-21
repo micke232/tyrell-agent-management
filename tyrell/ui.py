@@ -356,7 +356,7 @@ class Dashboard:
                 self.data["connected"] = False
                 self.data["error"] = value
                 self.data["providers"] = {key: {"name": name, "status": "offline", "connected": False, "models": []}
-                                          for key, name in (("codex", "Codex"), ("copilot", "Copilot"))}
+                                          for key, name in (("codex", "Codex"), ("copilot", "Copilot"), ("opencode", "OpenCode"))}
             elif kind == "error":
                 message, action, params = value
                 if action in ("agent_setup", "setup_import"):
@@ -753,7 +753,7 @@ class Dashboard:
             tone = status_tone(label)
             selected = key == self.selected
             name = thread.get("name") or thread.get("title", "Unnamed")
-            icon = "🤖" if thread.get("provider") == "copilot" else "🌀"
+            icon = {"copilot": "🤖", "opencode": "◈"}.get(thread.get("provider"), "🌀")
             self.put(screen, y, 2, icon, 2, s["base"])
             self.put(screen, y, 5, "●", 1, s[tone])
             available = min(20, sidebar - 8)
@@ -781,7 +781,7 @@ class Dashboard:
             self.put(screen, 3, copy_x, "[Copy]", 6, s["accent" if has_selection else "muted"] | bold)
             self.hit_copy = (copy_x, copy_x + 6, 3)
         self.put(screen, 3, x + width - 5, "[Esc]", 5, s["accent"])
-        model = ("Copilot · " if t.get("provider") == "copilot" else "Codex · ") + (t.get("model") or "Provider default") + " · " + (t.get("reasoningEffort") or "standard")
+        model = ({"copilot": "Copilot", "opencode": "OpenCode"}.get(t.get("provider"), "Codex") + " · ") + (t.get("model") or "Provider default") + " · " + (t.get("reasoningEffort") or "standard")
         next_config = effective_config(self.setup.view_data(self.data), self.selected)
         if next_config.get("model"):
             model += " → " + next_config["model"] + " / " + (next_config.get("effort") or "default")
@@ -990,7 +990,7 @@ class Dashboard:
         if label == "waiting" and not pending:
             status_text, status_tone_name = "● Waiting · Plan only — send a message to continue", "warning"
         if not self.provider_connected(t):
-            error = "Copilot is disconnected" if t.get("provider") == "copilot" else self.data.get("error") or "reconnecting…"
+            error = t.get("provider", "Codex") + " is disconnected" if t.get("provider") in ("copilot", "opencode") else self.data.get("error") or "reconnecting…"
             status_text, status_tone_name = "Disconnected · " + str(error), "warning"
         if self.data.get("sleepError"):
             status_text, status_tone_name = "Could not prevent sleep: " + self.data["sleepError"], "warning"
@@ -1035,7 +1035,7 @@ class Dashboard:
             for y, line in enumerate(panel_lines[self.panel_scroll:self.panel_scroll + h - 7], 4):
                 if is_help:
                     if self.panel == "HUB SETTINGS":
-                        for action in ("1", "2", "D", "H", "M", "K", "G", "C"):
+                        for action in ("1", "2", "3", "D", "H", "M", "K", "G", "C"):
                             if line.lstrip().startswith("[" + action + "]"):
                                 self.hub_hits.append((6, w - 4, y, action.lower()))
                     offset_x = 4
@@ -1082,8 +1082,8 @@ class Dashboard:
             self.setup.close_folder()
             self.setup.branch_picker = None
             self.panel, self.view, self.focus = None, "setup", "history"
-        elif action in ("1", "2"):
-            self.panel, self.panel_scroll = provider_guide("codex" if action == "1" else "copilot", host), 0
+        elif action in ("1", "2", "3"):
+            self.panel, self.panel_scroll = provider_guide({"1": "codex", "2": "copilot", "3": "opencode"}[action], host), 0
         elif action == "d":
             self.submit("diagnostics")
         elif action == "h":
@@ -1102,8 +1102,8 @@ class Dashboard:
         self.cursor, self.focus = len(self.buffer), "chat"
 
     def provider_connected(self, thread):
-        if thread.get("provider") == "copilot":
-            return self.data.get("providers", {}).get("copilot", {}).get("connected", False)
+        if thread.get("provider") in ("copilot", "opencode"):
+            return self.data.get("providers", {}).get(thread["provider"], {}).get("connected", False)
         return self.data.get("connected", False)
 
     def open_requests(self):
@@ -1211,7 +1211,7 @@ class Dashboard:
                         self.buffer, self.cursor = text, len(text)
                         return
                     choices = {}
-                    provider_order = [("codex", "Codex"), ("copilot", "Copilot")]
+                    provider_order = [("codex", "Codex"), ("copilot", "Copilot"), ("opencode", "OpenCode")]
                     if wizard.get("source") and self.data.get("threads", {}).get(wizard["source"], {}).get("provider", "codex") == "codex":
                         provider_order.reverse()
                     for provider, name in provider_order:
@@ -1288,9 +1288,9 @@ class Dashboard:
                 elif command == "/models":
                     entity = self.current()
                     catalog = self.data.get("models", [])
-                    if entity.get("provider") == "copilot":
-                        catalog = [{"model": m["id"], "supportedReasoningEfforts": []} for m in self.data.get("providers", {}).get("copilot", {}).get("models", [])]
-                    self.panel = ("COPILOT" if entity.get("provider") == "copilot" else "CODEX") + " MODELS\n\n" + "\n\n".join(m["model"] + "\n  " + ", ".join(e["reasoningEffort"] for e in m["supportedReasoningEfforts"]) for m in catalog if not m.get("hidden"))
+                    if entity.get("provider") in ("copilot", "opencode"):
+                        catalog = [{"model": m["id"], "supportedReasoningEfforts": []} for m in self.data.get("providers", {}).get(entity["provider"], {}).get("models", [])]
+                    self.panel = entity.get("provider", "codex").upper() + " MODELS\n\n" + "\n\n".join(m["model"] + "\n  " + ", ".join(e["reasoningEffort"] for e in m["supportedReasoningEfforts"]) for m in catalog if not m.get("hidden"))
                     self.panel += "\n\n/connections shows model catalogs for both Codex and Copilot."
                     self.panel += "\n\n/model NAME LEVEL sets this chat's next turn.\n/default NAME LEVEL sets new task defaults.\nEsc closes this panel."
                     self.panel_scroll = 0
@@ -1571,14 +1571,14 @@ class Dashboard:
             if self.panel == "APPEARANCE":
                 self.appearance.key(self, key)
             elif self.panel == "HUB SETTINGS" and key in (curses.KEY_UP, curses.KEY_DOWN, "\n", "\r", curses.KEY_ENTER):
-                actions = ["h", "m", "k", "g", "c", "1", "2", "d"]
+                actions = ["h", "m", "k", "g", "c", "1", "2", "3", "d"]
                 if key in ("\n", "\r", curses.KEY_ENTER):
                     self.hub_action(self.hub_selected)
                 else:
                     self.hub_selected = actions[(actions.index(self.hub_selected) + (1 if key == curses.KEY_DOWN else -1)) % len(actions)]
                     rows = help_rows( max(20, self.last_width - 8) if hasattr(self, "last_width") else 72, settings_text(self.data, self.directory))
                     self.panel_scroll = max(0, next((i for i,r in enumerate(rows) if r["text"].lstrip().startswith("[" + self.hub_selected.upper() + "]")), 0) - 5)
-            elif self.panel == "HUB SETTINGS" and key in ("1", "2", "d", "D", "h", "H", "m", "M", "k", "K", "g", "G", "c", "C"):
+            elif self.panel == "HUB SETTINGS" and key in ("1", "2", "3", "d", "D", "h", "H", "m", "M", "k", "K", "g", "G", "c", "C"):
                 self.hub_action(key.lower())
             elif key == "\x1b":
                 self.panel = None
