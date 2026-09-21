@@ -511,7 +511,7 @@ class Dashboard:
             return self.selected.split(":", 1)[1]
         raise ValueError("Select an agent first")
 
-    def prompt_pulse_phase(self, now=None):
+    def cursor_blink_phase(self, now=None):
         if self.focus != "chat" or self.panel or self.native_copy_mode:
             return None
         return int((time.monotonic() if now is None else now) / 0.85) % 2
@@ -992,8 +992,6 @@ class Dashboard:
             status_text, status_tone_name = "Could not prevent sleep: " + self.data["sleepError"], "warning"
         self.put(screen, composer_top - 1, x, status_text, width, s[status_tone_name])
         border = s["accent" if self.focus == "chat" else "muted"]
-        if self.prompt_pulse_phase() == 1:
-            border |= curses.A_DIM
         self.put(screen, composer_top, x, "╭" + "─" * (width - 2) + "╮", width, border)
         prompt = self.wizard["label"] if self.wizard else "Prompt"
         self.put(screen, composer_top, x + 2, " " + crop(prompt, width - 8) + " ", width - 5, border | bold)
@@ -1052,7 +1050,7 @@ class Dashboard:
                 footer += " · y approve once / n deny"
             self.put(screen, h - 3, 4, footer, w - 8, s["warning"])
         try:
-            curses.curs_set(1 if self.focus == "chat" and not self.panel else 0)
+            curses.curs_set(1 if self.cursor_blink_phase() == 0 else 0)
             if self.focus == "chat" and not self.panel:
                 screen.move(self.draft_top + cursor_row - self.draft_offset, min(x + width - 3, self.draft_left + cursor_column))
         except curses.error:
@@ -1733,7 +1731,7 @@ class Dashboard:
             previous_handlers[sig] = signal.signal(sig, lambda *_: self.stopped.set())
         repaint_native = True
         native_size = None
-        last_prompt_phase = None
+        last_cursor_phase = None
         try:
             while not self.stopped.is_set():
                 frame_started = time.monotonic()
@@ -1765,10 +1763,10 @@ class Dashboard:
                 # Native Cmd+C belongs to Terminal. Leave its selection intact by
                 # keeping the displayed frame still until keyboard input or resize.
                 active = self.current().get("status", {}).get("type") == "active"
-                pulse = self.prompt_pulse_phase(frame_started)
-                if (repaint_native or size != native_size or (not native_mode and (updated or active or pulse != last_prompt_phase))):
+                pulse = self.cursor_blink_phase(frame_started)
+                if (repaint_native or size != native_size or (not native_mode and (updated or active or pulse != last_cursor_phase))):
                     self.render(screen)
-                    last_prompt_phase = pulse
+                    last_cursor_phase = pulse
                 native_size = size
                 repaint_native = False
                 received_input = False

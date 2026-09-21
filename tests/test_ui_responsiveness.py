@@ -7,27 +7,28 @@ from test_native_clipboard import fixture
 
 
 class ResponsivenessTests(unittest.TestCase):
-    def test_prompt_pulses_slowly_only_when_focused_without_blinking_typed_text(self):
+    def test_only_text_cursor_blinks_while_prompt_and_text_stay_stable(self):
         import curses
         from test_native_clipboard import Screen
         ui, _ = fixture()
         ui.focus = 'chat'
         ui.buffer = 'Keep this readable'
-        self.assertEqual(ui.prompt_pulse_phase(0.1), ui.prompt_pulse_phase(0.8))
-        self.assertNotEqual(ui.prompt_pulse_phase(0.1), ui.prompt_pulse_phase(0.9))
+        self.assertEqual(ui.cursor_blink_phase(0.1), ui.cursor_blink_phase(0.8))
+        self.assertNotEqual(ui.cursor_blink_phase(0.1), ui.cursor_blink_phase(0.9))
         styles = []
         for now in (0.1, 0.9):
             screen = Screen()
-            with patch('codex_dashboard.ui.time.monotonic', return_value=now):
+            with patch('codex_dashboard.ui.time.monotonic', return_value=now), patch('codex_dashboard.ui.curses.curs_set') as cursor:
                 ui.render(screen)
+                cursor.assert_called_with(1 if now == 0.1 else 0)
             styles.append(next(style for y, _, text, style in screen.draws if y == ui.draft_top-1 and text.startswith('╭')))
             draft = next(style for _, _, text, style in screen.draws if text == ui.buffer)
             self.assertFalse(draft & curses.A_DIM)
-        self.assertEqual(styles[0] ^ styles[1], curses.A_DIM)
+        self.assertEqual(styles[0], styles[1])
         ui.focus = 'sidebar'
-        self.assertIsNone(ui.prompt_pulse_phase(0.9))
+        self.assertIsNone(ui.cursor_blink_phase(0.9))
         ui.focus, ui.panel = 'chat', 'HUB SETTINGS'
-        self.assertIsNone(ui.prompt_pulse_phase(0.9))
+        self.assertIsNone(ui.cursor_blink_phase(0.9))
 
     def test_already_queued_snapshot_for_previous_agent_is_discarded(self):
         ui, _ = fixture()
