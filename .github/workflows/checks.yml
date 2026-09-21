@@ -1,0 +1,84 @@
+name: Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Test
+        run: python -B -m unittest discover -s tests
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python -c 'import os; from tyrell import __version__; assert os.environ["GITHUB_REF_NAME"] == "v" + __version__, "Tag must match package version"'
+          git merge-base --is-ancestor HEAD origin/main
+      - name: Build wheel and Homebrew archive
+        env:
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python -m pip install -r packaging/build-requirements.txt
+          python scripts/prepare_release.py --check --repository "$RELEASE_REPOSITORY"
+      - name: Test installed package outside checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/tyrell-smoke"
+          "$RUNNER_TEMP/tyrell-smoke/bin/python" -m pip install --no-index --no-deps dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/tyrell-smoke/bin/tyrell" --version
+          "$RUNNER_TEMP/tyrell-smoke/bin/tyrell" --help
+      - name: Test Homebrew installer
+        env:
+          HOMEBREW_DEVELOPER: '1'
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_ANALYTICS: '1'
+        run: |
+          brew list python@3.14 >/dev/null 2>&1 || brew install python@3.14
+          brew ruby scripts/verify_homebrew.rb "$PWD/Formula/tyrell.rb" "$PWD"/dist/homebrew/*-homebrew.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-files
+          path: |
+            dist/*.whl
+            dist/homebrew/
+          retention-days: 14
+
+  release:
+    name: Draft release
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: dist
+      - name: Create draft with tested packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --draft \
+            dist/*.whl dist/homebrew/*-homebrew.tar.gz dist/homebrew/SHA256SUMS \
+            dist/homebrew/repository-files/Formula/tyrell.rb
