@@ -31,8 +31,36 @@ async def git_bytes(cwd, *args, limit=8 * 1024 * 1024):
             await process.wait()
 
 
-async def changes(cwd, base="HEAD"):
+class ChangeSet(dict):
+    pass
+
+
+async def comparison_base(cwd):
+    """Include committed feature work; stay at HEAD on the default branch."""
+    try:
+        branch = (await git_bytes(cwd, 'symbolic-ref', '--short', 'HEAD')).decode().strip()
+    except ValueError:
+        return 'HEAD'
+    candidates = []
+    try:
+        remote = (await git_bytes(cwd, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD')).decode().strip()
+        candidates.append(remote)
+    except ValueError:
+        pass
+    candidates.extend(['main', 'master'])
+    for candidate in candidates:
+        if branch == candidate.removeprefix('origin/'):
+            return 'HEAD'
+        try:
+            return (await git_bytes(cwd, 'merge-base', 'HEAD', candidate)).decode().strip()
+        except ValueError:
+            continue
+    return 'HEAD'
+
+
+async def changes(cwd, base=None):
     root = Path((await git_bytes(cwd, 'rev-parse', '--show-toplevel')).decode().strip())
+    base = base or await comparison_base(root)
     tokens = (await git_bytes(root, 'diff', '--name-status', '-z', '--no-ext-diff', '--no-textconv', base, '--')).split(b'\0')
     items = []; index = 0
     while index < len(tokens) and tokens[index]:
@@ -42,10 +70,13 @@ async def changes(cwd, base="HEAD"):
             previous, name = name, os.fsdecode(tokens[index]); index += 1
         items.append((code, name, previous))
     items.extend(('??', os.fsdecode(name), None) for name in (await git_bytes(root, 'ls-files', '--others', '--exclude-standard', '-z')).split(b'\0') if name)
-    records = {}
+    records = ChangeSet()
+    records.base = base
+    records.truncated = len(items) > 250
+    records.total = len(items)
     for code, name, previous in items:
         if len(records) >= 250:
-            raise ValueError('More than 250 changed files; narrow the workspace before collecting diffs')
+            break
         path = root / name
         sensitive = any(part.startswith('.env') or part in ('.npmrc', '.netrc', '.pypirc', 'credentials') or part.endswith(('.pem', '.key')) for part in Path(name).parts)
         if sensitive:

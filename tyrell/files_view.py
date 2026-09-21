@@ -128,6 +128,9 @@ class FilesView:
                 if location.get("error"):
                     row(location["error"], "warning")
             row(("%d files · Workspace changes" if (location is not None or thread.get("filesSource") == "git") else "%d files · Latest reported change per file") % len(records), "accent")
+            comparison = location.get("base") if location else thread.get("filesBase")
+            if comparison:
+                row("Compared with: " + ("HEAD · uncommitted changes" if comparison == "HEAD" else comparison[:12] + " · includes committed branch changes"), "muted")
             row("Workspace Git diff · includes handed-over and external changes" if (location is not None or thread.get("filesSource") == "git") else "Agent history · not the current Git diff", "muted")
             if thread.get("filesError"):
                 row(thread["filesError"], "warning")

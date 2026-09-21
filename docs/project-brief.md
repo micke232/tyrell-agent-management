@@ -20,7 +20,7 @@ Bygg en lokal terminalvy som startas med `tyrell`. Verktyget och dess inställni
 
 Installerad Codex CLI har tidigare identifierats som 0.155.0. `codex app-server proxy` erbjuder ett JSON RPC-gränssnitt till den gemensamma daemonen. Undvik att stoppa eller starta om den daemonen eftersom andra chattar kan använda den.
 
-Katalogen `schema/` innehåller protokollscheman genererade av den installerade CLI-versionen. Relevanta metoder är initialize, thread/list, thread/read, thread/start, thread/resume, turn/start, turn/steer, turn/interrupt och model/list. Meddelanden ger aktuell status, strömmad text och planuppdateringar.
+Lokalt genererade protokollscheman i `schema/` är utvecklingsreferenser och ignoreras av Git. Relevanta metoder är initialize, thread/list, thread/read, thread/start, thread/resume, turn/start, turn/steer, turn/interrupt och model/list. Meddelanden ger aktuell status, strömmad text och planuppdateringar.
 
 Tänkt implementation: terminalgränssnitt, separat beständig lokal tjänst, lokal IPC och worktrees utanför användarens ordinarie checkout. Slutlig teknisk utformning ska verifieras genom implementation och tester.
 

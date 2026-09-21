@@ -23,7 +23,7 @@ from .files_view import workspace_root
 from urllib.parse import urlparse
 from .copilot_runtime import CopilotRuntime
 from .agent_setup import (discover_project, effective_config, instruction_text, model_info,
-                          target_entity, validate_engine, validate_patch, guidance_conflicts, project_root)
+                          discover_git, target_entity, validate_engine, validate_patch, guidance_conflicts, project_root)
 
 
 SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown"]
@@ -50,6 +50,7 @@ class Service:
         self.workspace_git = {}
         self.workspace_requested = None
         self.files_requested = None
+        self.setup_requested = None
         self.files_browser = None
         self.process_requested_at = 0
 
@@ -223,7 +224,17 @@ class Service:
                                                 "commit": commit, "worktree": Path(git_dir).resolve() != common}}
                 except (OSError, ValueError):
                     self.workspace_git = {cwd: {"unavailable": True}}
+            if self.setup_requested and time.monotonic() - self.setup_requested[1] < 10:
+                await self.refresh_setup_git(self.setup_requested[0])
             await asyncio.sleep(3)
+
+    async def refresh_setup_git(self, root):
+        detected = await asyncio.to_thread(discover_git, Path(root))
+        profiles = self.state.data.setdefault("projectProfiles", {})
+        profile = profiles.setdefault(root, {"path": root, "name": Path(root).name, "config": {}})
+        if any(profile.get(key) != value for key, value in detected.items()):
+            profile.update(detected)
+            self.state.dirty = True
 
     async def check_installation(self):
         self.installation = await asyncio.to_thread(local_report, self.command[0])
@@ -312,6 +323,8 @@ class Service:
                            if self.state.data.get(bucket, {}).get(req.get("threadId"))), None)
             if entity:
                 self.workspace_requested = workspace_root(entity)
+            if req.get("view") == "setup" and entity:
+                self.setup_requested = (project_root(entity), time.monotonic())
             if req.get("view") == "files" and entity:
                 self.files_requested = (entity["id"], req.get("filesRoot"), time.monotonic())
             if req.get("view") == "processes":
@@ -336,12 +349,14 @@ class Service:
                 raise ValueError("Choose a folder")
             try:
                 records = await workspace_changes(root)
+                error = ("Showing the first 250 of %d changed files." % records.total) if records.truncated else ""
+                base = records.base
                 records = {path: record for path, record in records.items()
                            if Path(path).is_relative_to(root)}
-                error = ""
             except (ValueError, OSError) as exc:
+                base = None
                 records, error = {}, "Git changes unavailable for this folder: " + str(exc)
-            return {"root": str(root), "records": records, "error": error}
+            return {"root": str(root), "records": records, "error": error, "base": base}
         if action == "setup_import":
             profile = await asyncio.to_thread(discover_project, req["path"])
             profiles = self.state.data.setdefault("projectProfiles", {})

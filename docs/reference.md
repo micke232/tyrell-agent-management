@@ -404,7 +404,7 @@ skrollning, flikbyte, färger och stängning. Det startar inga agenter.
 Gränssnittet är byggt med Python curses och tjänsten med asyncio. Den installerade
 Codex-proxyn vidarebefordrar råa bytes till en Unix-socket, så anslutningen använder
 WebSocket-handshake och maskerade klientramar. Protokollscheman från den lokala
-CLI-versionen ligger i `schema/`. Se även [officiell OpenAI-dokumentation om
+CLI-versionen kan sparas lokalt i `schema/` som ignorerad utvecklingsreferens. Se även [officiell OpenAI-dokumentation om
 App Server](https://learn.chatgpt.com/docs/app-server).
 
 ### Ändrade filer och fliknavigering

@@ -49,3 +49,52 @@ class FilesRefreshTests(unittest.IsolatedAsyncioTestCase):
             ui.updates.put(('snapshot',{'threads':{'fixture':{'id':'fixture'}},'filesBrowser':s.files_browser}))
             ui.update()
             self.assertEqual(ui.files.locations[ui.selected]['records'],{})
+
+    async def test_committed_feature_changes_remain_visible_and_main_stays_clean(self):
+        from tyrell.workspace_changes import changes
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)/'repo'; repo.mkdir()
+            await git('init', '-b', 'main', str(repo))
+            await git('-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'initial')
+            base = await git('-C', str(repo), 'rev-parse', 'HEAD')
+            await git('-C', str(repo), 'switch', '-c', 'feature/test')
+            (repo/'committed.txt').write_text('committed work')
+            await git('-C', str(repo), 'add', '.')
+            await git('-C', str(repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'work')
+            self.assertEqual(await git('-C', str(repo), 'status', '--porcelain'), '')
+            records = await changes(repo)
+            self.assertIn(str((repo/'committed.txt').resolve()), records)
+            self.assertEqual(records.base, base)
+            self.assertEqual(await changes(repo, 'HEAD'), {})
+            await git('-C', str(repo), 'switch', 'main')
+            self.assertEqual(await changes(repo), {})
+
+    async def test_setup_detects_git_initialized_after_folder_import_without_changing_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)/'repo'; repo.mkdir()
+            service = Service(Path(directory)/'state', ['unused'])
+            path = str(repo)
+            service.state.data.setdefault('projectProfiles', {})[path] = {'path': path, 'gitRoot': None,
+                'config': {'baseBranch': 'custom-choice', 'runTests': False}}
+            await service.refresh_setup_git(path)
+            self.assertIsNone(service.state.data['projectProfiles'][path]['gitRoot'])
+            await git('init', '-b', 'main', path)
+            await git('-C', path, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'initial')
+            await service.refresh_setup_git(path)
+            profile = service.state.data['projectProfiles'][path]
+            self.assertEqual(Path(profile['gitRoot']).resolve(), repo.resolve())
+            self.assertIn('main', profile['baseBranches'])
+            self.assertEqual(profile['config'], {'baseBranch': 'custom-choice', 'runTests': False})
+
+    async def test_large_change_set_retains_first_page_instead_of_becoming_empty(self):
+        from tyrell.workspace_changes import changes
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            await git('init', '-b', 'main', directory)
+            await git('-C', directory, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'initial')
+            for index in range(251):
+                (repo/('%03d.txt' % index)).write_text('new')
+            records = await changes(repo)
+            self.assertEqual(len(records), 250)
+            self.assertTrue(records.truncated)
+            self.assertEqual(records.total, 251)

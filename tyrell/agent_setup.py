@@ -469,6 +469,16 @@ def discover_project(directory):
     terraform_roots = [name for name in (".", "terraform", "infra", "infrastructure") if any((root / name).glob("*.tf"))]
     if len(terraform_roots) == 1:
         config["terraformDir"] = terraform_roots[0]
+    detected_git = discover_git(root)
+    git_root, base_branches = detected_git["gitRoot"], detected_git["baseBranches"]
+    config = validate_patch(config)
+    return {"baseBranches": base_branches, "guidanceRules": rules, "gitRoot": git_root, "hasPackageJson": (root / "package.json").is_file(), "name": package.get("name") or root.name, "path": str(root), "config": config,
+            "detectedConfig": dict(config), "scripts": catalog, "portSource": port_source or ("README.md" if local else None),
+            "sources": list(dict.fromkeys([name for name in ("package.json", ".nvmrc", "playwright.config.ts") if read(name)] + guidance + config_sources))}
+
+
+def discover_git(root):
+    """Refresh Git metadata without overwriting imported or user-edited settings."""
     git_root = None
     base_branches = []
     try:
@@ -480,7 +490,4 @@ def discover_project(directory):
                 base_branches = [line for line in branches.stdout.splitlines() if not line.endswith("/HEAD")]
     except (OSError, subprocess.TimeoutExpired):
         pass
-    config = validate_patch(config)
-    return {"baseBranches": base_branches, "guidanceRules": rules, "gitRoot": git_root, "hasPackageJson": (root / "package.json").is_file(), "name": package.get("name") or root.name, "path": str(root), "config": config,
-            "detectedConfig": dict(config), "scripts": catalog, "portSource": port_source or ("README.md" if local else None),
-            "sources": list(dict.fromkeys([name for name in ("package.json", ".nvmrc", "playwright.config.ts") if read(name)] + guidance + config_sources))}
+    return {"gitRoot": git_root, "baseBranches": base_branches}

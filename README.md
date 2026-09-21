@@ -167,6 +167,9 @@ The header shows the working folder and branch/worktree context. Use:
 - **Plan** for completed and remaining steps.
 - **Files** for the changed-file tree and diffs. In an isolated worktree, changes
   are compared with its starting commit, so committed task changes remain visible.
+  In a normal feature-branch checkout, Files compares with the merge base against
+  the detected default branch (`main`/`master` as fallbacks), including committed
+  and uncommitted changes. On the default branch it shows uncommitted changes.
 - **Tools** for commands and their output.
 - **Processes** for local processes and ports associated with workspaces.
 
@@ -216,7 +219,8 @@ Folders without Git can still be used, but they do not get Git worktree isolatio
 
 Setup can save preferences for one agent, a project profile or shared defaults.
 Importing a folder detects Git, `package.json` scripts and project conventions
-without running scripts or installing dependencies.
+without running scripts or installing dependencies. Git detection and the branch
+list refresh while Setup is open, including when Git was initialized after import.
 
 | Setup area | Typical choices |
 | --- | --- |

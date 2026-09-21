@@ -12,3 +12,6 @@ build/
 .env.*
 
 /codex_dashboard
+
+# Generated protocol reference; not used by the app or tests.
+/schema/

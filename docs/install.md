@@ -162,6 +162,9 @@ button path; OS-level Cmd+C and physical mouse gestures are not automated.
 Files refreshes automatically while open. Agent workspaces are also refreshed
 when a Codex or Copilot turn completes. A folder opened with **Open folder…** is
 refreshed independently and does not change the agent's working folder.
+Feature-branch views include committed changes since the branch diverged from the
+default branch; isolated worktrees use their stored base commit. The comparison
+base is shown in Files. Large change sets show a limited list with an explicit warning.
 
 ## Startup
 

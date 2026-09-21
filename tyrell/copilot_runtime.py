@@ -148,8 +148,9 @@ class CopilotRuntime(CopilotProbe):
     async def collect_changes(self, tid):
         t = self.state.thread(tid)
         try:
-            records = await changes(t.get("setupCwd") or t["cwd"], t.get("agentWorktree", {}).get("baseCommit") or "HEAD")
-            t.update(changedFiles=records, filesSource="git", filesError=None)
+            records = await changes(t.get("setupCwd") or t["cwd"], t.get("agentWorktree", {}).get("baseCommit"))
+            t.update(changedFiles=records, filesSource="git", filesBase=records.base,
+                     filesError=("Showing the first 250 of %d changed files." % records.total) if records.truncated else None)
         except (OSError, ValueError, asyncio.TimeoutError):
             t["filesError"] = "Git diff unavailable or too large; reported file operations remain visible."
         self.state.dirty = True
