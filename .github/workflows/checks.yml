@@ -37,9 +37,8 @@ jobs:
         env:
           RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
-          python -m pip install build
-          python -m build --wheel
-          python scripts/build_homebrew.py --wheel dist/*.whl --repository "$RELEASE_REPOSITORY"
+          python -m pip install -r packaging/build-requirements.txt
+          python scripts/prepare_release.py --check --repository "$RELEASE_REPOSITORY"
       - name: Test installed package outside checkout
         run: |
           python -m venv "$RUNNER_TEMP/tyrell-smoke"
@@ -54,7 +53,7 @@ jobs:
           HOMEBREW_NO_ANALYTICS: '1'
         run: |
           brew list python@3.14 >/dev/null 2>&1 || brew install python@3.14
-          brew ruby scripts/verify_homebrew.rb "$PWD/dist/homebrew/repository-files/Formula/agent-hub.rb" "$PWD"/dist/homebrew/*-homebrew.tar.gz
+          brew ruby scripts/verify_homebrew.rb "$PWD/Formula/agent-hub.rb" "$PWD"/dist/homebrew/*-homebrew.tar.gz
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-files

@@ -1764,9 +1764,16 @@ class Dashboard:
                 # keeping the displayed frame still until keyboard input or resize.
                 active = self.current().get("status", {}).get("type") == "active"
                 pulse = self.cursor_blink_phase(frame_started)
-                if (repaint_native or size != native_size or (not native_mode and (updated or active or pulse != last_cursor_phase))):
+                if (repaint_native or size != native_size or (not native_mode and (updated or active))):
                     self.render(screen)
-                    last_cursor_phase = pulse
+                elif not native_mode and pulse != last_cursor_phase:
+                    # Cursor visibility is a terminal operation; do not redraw the
+                    # entire history just to blink the insertion point.
+                    try:
+                        curses.curs_set(1 if pulse == 0 else 0)
+                    except curses.error:
+                        pass
+                last_cursor_phase = pulse
                 native_size = size
                 repaint_native = False
                 received_input = False
@@ -1777,12 +1784,17 @@ class Dashboard:
                     self.input_key(key)
                     screen.timeout(0)
                     # Drain bursts before repainting; a trackpad can send many reports.
-                    deadline = time.monotonic() + 0.002
+                    deadline = time.monotonic() + 0.008
                     while time.monotonic() < deadline:
                         self.input_key(screen.get_wch())
                 except curses.error:
                     continue
                 finally:
+                    if received_input:
+                        # Display keystrokes before the frame-rate limiter waits.
+                        self.render(screen)
+                        last_cursor_phase = self.cursor_blink_phase()
+                        repaint_native = False
                     screen.timeout(100)
                     # Input may repaint at 60 Hz; idle/errors stay capped at 10 Hz.
                     # Keep the error backoff separate so responsiveness cannot revive

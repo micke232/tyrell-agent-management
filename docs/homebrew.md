@@ -48,6 +48,8 @@ directly to `main`.
 ## Release
 
 1. Update `codex_dashboard/__init__.py` to a new version on a feature branch.
+   Run the release preparation commands below and commit `Formula/agent-hub.rb`
+   in that same PR. CI verifies its URL and checksum against the actual build.
 2. Merge its pull request after checks pass.
 3. From the updated `main`, create and push the matching tag, for example:
 
@@ -61,19 +63,18 @@ directly to `main`.
 4. Wait for Checks. Review the generated draft under GitHub Releases, mark alpha
    versions as prereleases, and publish it. All attached files were built together
    and tested; do not rebuild or replace the archive independently.
-5. Download `agent-hub.rb` from that release. On a new feature branch, place it at
-   `Formula/agent-hub.rb` and merge a pull request. This enables installation/update
-   from the same repository without a bot bypassing branch protection.
+5. Homebrew is now available: the matching formula was already merged in the
+   release PR. No second PR or bot commit is needed.
 
 The archive contains the wheel and installation guide only, not local account
 credentials, chat history, or worktrees. Re-running a completed release tag does
 not overwrite an existing release; use a new version for changed packages.
 
-## Installation after the first release and formula merge
+## Installation after the first release is published
 
 ```sh
 brew tap micke232/tyrell-agent-management https://github.com/micke232/tyrell-agent-management.git
-brew install micke232/tyrell-agent-management/agent-hub
+brew install agent-hub
 tyrell
 ```
 
@@ -82,18 +83,18 @@ installs Python and Git. Ghostty remains optional; model CLIs and their sign-in 
 configured separately. `tyrell setup` and F10 Settings guide connection setup.
 
 For updates, stop idle agents with `tyrell stop`, then run `brew update` and
-`brew upgrade micke232/tyrell-agent-management/agent-hub`.
+`brew upgrade agent-hub`.
 
 ## Local verification
 
 ```sh
 python3 -B -m unittest discover -s tests
-python3 -m pip install build
-python3 -m build --wheel
-python3 scripts/build_homebrew.py --wheel dist/agent_hub_management-0.2.0a6-py3-none-any.whl --repository micke232/tyrell-agent-management
+python3.14 -m venv .venv
+.venv/bin/python -m pip install -r packaging/build-requirements.txt
+.venv/bin/python scripts/prepare_release.py
 HOMEBREW_DEVELOPER=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
   brew ruby scripts/verify_homebrew.rb \
-  "$PWD/dist/homebrew/repository-files/Formula/agent-hub.rb" \
+  "$PWD/Formula/agent-hub.rb" \
   "$PWD/dist/homebrew/agent-hub-0.2.0a6-homebrew.tar.gz"
 ```
 
@@ -102,3 +103,9 @@ preparing a new release. The Homebrew check requires `python@3.14` locally.
 
 References: [GitHub workflow permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 and [Homebrew taps](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap).
+
+Build tools are pinned and wheel timestamps are fixed so PR and tag builds have
+identical checksums. After changing packaged source or the installation guide,
+rerun `scripts/prepare_release.py` with the build environment and commit the updated
+formula. Never reuse a published version for changed code. Until its release is
+published, a newly merged formula points to an unavailable asset.

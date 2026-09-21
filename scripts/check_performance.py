@@ -115,6 +115,22 @@ def check():
                 start = time.monotonic()
                 wait(lambda: marker in frame().get('text', []), 'incoming reply')
                 replies.append((time.monotonic() - start) * 1000)
+            typing = []
+            with lock:
+                thread['status'] = {'type': 'idle'}
+            time.sleep(.7)
+            first = frame()['renders']
+            time.sleep(1.9)
+            cursor_only_renders = frame()['renders'] - first
+            assert cursor_only_renders <= 1, ('Cursor blinking repainted history', cursor_only_renders)
+            for char in ' ordinary typing åäö':
+                draft += char
+                start = time.monotonic()
+                os.write(master, char.encode())
+                wait(lambda: frame().get('buffer') == draft, 'ordinary typing')
+                typing.append((time.monotonic() - start) * 1000)
+                time.sleep(.025)
+            assert max(typing) < 200, typing
             fixed_statuses = frame()['statusPairs']
             os.write(master, b'\x1b[21~')
             wait(lambda: frame().get('panel') == 'HUB SETTINGS' and frame().get('settingsMarker') == '›', 'visible F10 selection')
@@ -138,6 +154,8 @@ def check():
             assert max(inputs) < 350, inputs
             assert max(replies) < 900, replies
             print(json.dumps({'startup': 'animated, green, waits for key', 'idle_renders_in_1_1s': idle_renders,
+                              'cursor_only_history_repaints': cursor_only_renders,
+                              'ordinary_typing_ms': {'median': round(statistics.median(typing), 2), 'max': round(max(typing), 2)},
                               'input_under_mouse_burst_ms': {'median': round(statistics.median(inputs), 2), 'max': round(max(inputs), 2)},
                               'snapshot_to_visible_reply_ms': {'median': round(statistics.median(replies), 2), 'max': round(max(replies), 2)}}, indent=2))
         finally:
