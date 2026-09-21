@@ -25,6 +25,12 @@ class ArchiveTests(unittest.IsolatedAsyncioTestCase):
         await self.service.rpc.close()
         self.temp.cleanup()
 
+    async def wait_for_completion(self):
+        async def completed():
+            while self.service.state.thread(self.tid)["lastTurnStatus"] != "completed":
+                await asyncio.sleep(.01)
+        await asyncio.wait_for(completed(), timeout=5)
+
     async def test_remove_is_persistent_and_does_not_archive_or_interrupt(self):
         await self.service.dispatch({"action": "send", "threadId": self.tid, "text": "work"})
         await self.service.dispatch({"action": "remove", "threadId": self.tid})
@@ -33,14 +39,14 @@ class ArchiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(self.tid, s["threads"])
         self.assertIn(self.tid, s["hiddenThreads"])
         self.assertEqual(State(self.temp.name).data["hidden"], [self.tid])
-        await asyncio.sleep(1)
+        await self.wait_for_completion()
         self.assertEqual(self.service.state.thread(self.tid)["lastTurnStatus"], "completed")
         await self.service.dispatch({"action": "restore", "threadId": self.tid})
         self.assertIn(self.tid, (await self.service.dispatch({"action": "snapshot"}))["threads"])
 
     async def test_archive_browse_restore_preserves_history(self):
         await self.service.dispatch({"action": "send", "threadId": self.tid, "text": "work"})
-        await asyncio.sleep(1)
+        await self.wait_for_completion()
         await self.service.dispatch({"action": "archive", "threadId": self.tid})
         await self.service.refresh()
         self.assertNotIn(self.tid, self.service.state.data["threads"])
