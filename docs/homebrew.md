@@ -26,7 +26,7 @@ and Homebrew formula updates. In GitHub Settings → Rules → Rulesets, protect
 force pushes and deletion. Enable the check requirement after its first run.
 Requiring another person's approval is optional for a solo project.
 
-## First push
+## Personal GitHub access
 
 Authenticate to your personal GitHub separately from any company GitHub host:
 
@@ -34,9 +34,16 @@ Authenticate to your personal GitHub separately from any company GitHub host:
 gh auth login --hostname github.com --git-protocol https --web
 ```
 
-The local directory must first become a Git repository. For an empty remote, create
-an empty initial `main` commit, then add the application on a feature branch and
-open its pull request. Do not push application changes directly to `main`.
+Clone the repository, then create a feature branch for changes:
+
+```sh
+git clone https://github.com/micke232/tyrell-agent-management.git
+cd tyrell-agent-management
+git switch -c feature/my-change
+```
+
+Push the feature branch and open a pull request. Do not push application changes
+directly to `main`.
 
 ## Release
 
