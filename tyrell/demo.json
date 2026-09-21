@@ -3,7 +3,7 @@
   "preventingSleep": true,
   "threads": {
     "demo-active": {
-      "id": "demo-active", "name": "Refactor authentication", "cwd": "~/.codex-dashboard/worktrees/web-app/task-1",
+      "id": "demo-active", "name": "Refactor authentication", "cwd": "~/.tyrell/worktrees/web-app/task-1",
       "model": "example-model", "reasoningEffort": "high", "status": {"type": "active", "activeFlags": []},
       "activity": "Running authentication tests", "plan": [
         {"step": "Inspect the current authentication flow", "status": "completed"},

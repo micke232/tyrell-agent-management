@@ -1,18 +1,18 @@
-class AgentHub < Formula
+class Tyrell < Formula
   include Language::Python::Virtualenv
 
   desc "Terminal hub for independent Codex and GitHub Copilot agents"
-  homepage "@@HOMEPAGE@@"
-  url "@@URL@@"
-  version "@@VERSION@@"
-  sha256 "@@SHA256@@"
+  homepage "https://github.com/micke232/tyrell-agent-management"
+  url "https://github.com/micke232/tyrell-agent-management/releases/download/v0.2.0a6/tyrell-0.2.0a6-homebrew.tar.gz"
+  version "0.2.0a6"
+  sha256 "85c058bb83c94c6a87e9aa28032e81a05443ef4294333a0a92fe5e2cbec11720"
 
   depends_on "python@3.14"
   depends_on "git"
 
   def install
     venv = virtualenv_create(libexec, Formula["python@3.14"].opt_bin/"python3.14")
-    venv.pip_install_and_link buildpath/"@@WHEEL@@"
+    venv.pip_install_and_link buildpath/"tyrell_agent_management-0.2.0a6-py3-none-any.whl"
   end
 
   def caveats

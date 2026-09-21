@@ -7,11 +7,11 @@ import time
 import unittest
 from pathlib import Path
 
-from codex_dashboard.rpc import Rpc
-from codex_dashboard.service import Service
-from codex_dashboard.state import State, status_label
-from codex_dashboard.ui import Dashboard, clean, crop, wrap
-from codex_dashboard.worktrees import create_worktree, git
+from tyrell.rpc import Rpc
+from tyrell.service import Service
+from tyrell.state import State, status_label
+from tyrell.ui import Dashboard, clean, crop, wrap
+from tyrell.worktrees import create_worktree, git
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -160,7 +160,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                                      "patch": {"model": "test-model", "effort": "high", "acceptance": "Keep keyboard access", "testPort": "5181"}})
         await self.service.dispatch({"action": "start", "taskId": task["id"]})
         t = self.service.state.thread(task["threadId"])
-        from codex_dashboard.agent_setup import effective_config
+        from tyrell.agent_setup import effective_config
         effective = effective_config(self.service.state.data, "thread:" + t["id"])
         self.assertEqual(effective["devPort"], "5173")
         self.assertEqual(effective["testPort"], "5181")

@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from codex_dashboard.rpc import Rpc
-from codex_dashboard.service import Service
-from codex_dashboard.state import State
+from tyrell.rpc import Rpc
+from tyrell.service import Service
+from tyrell.state import State
 
 ROOT = Path(__file__).resolve().parents[1]
 

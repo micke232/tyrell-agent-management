@@ -2,7 +2,7 @@
 
 Projektmapp: valfri lokal checkout av detta repository.
 
-Bygg en lokal terminalvy som startas med `codex dashboard`. Verktyget och dess inställningar ska vara fristående från de projekt agenterna arbetar i och ska inte checkas in i dessa projekt.
+Bygg en lokal terminalvy som startas med `tyrell`. Verktyget och dess inställningar ska vara fristående från de projekt agenterna arbetar i och ska inte checkas in i dessa projekt.
 
 ## Önskad funktion
 
@@ -26,7 +26,7 @@ Tänkt implementation: terminalgränssnitt, separat beständig lokal tjänst, lo
 
 ## Arbetsstatus
 
-Dashboarden är implementerad och installerad (2026-09-18). Starta med `codex dashboard` i en ny terminal. Se `README.md` för kommandon, begränsningar och verifiering. Implementation finns i `codex_dashboard/`, startpunkt `dashboard.py`.
+Dashboarden är implementerad och installerad (2026-09-18). Starta med `tyrell` i en ny terminal. Se `README.md` för kommandon, begränsningar och verifiering. Implementation finns i `tyrell/`, startpunkt `dashboard.py`.
 
 Verifierat: 15 automatiska tester, läsning och återanslutning av den ursprungliga chatten, terminalvyn i en riktig PTY samt en verklig Codex-tur i en temporär worktree medan klienten var frånkopplad. macOS vilospärr observerades under live-testet. Shell-integrationen bevarar den ursprungliga Codex-binären och vanliga kommandon.
 

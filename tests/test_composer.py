@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from codex_dashboard.composer import DraftLayout
-from codex_dashboard.ui import Dashboard
+from tyrell.composer import DraftLayout
+from tyrell.ui import Dashboard
 
 
 class ComposerTests(unittest.TestCase):

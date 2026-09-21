@@ -36,7 +36,7 @@ def ensure_service(directory, codex):
     log_path = directory / "service.log"
     with log_path.open("a") as log:
         os.chmod(log_path, 0o600)
-        subprocess.Popen([sys.executable, "-B", "-m", "codex_dashboard", "--state-dir", str(directory), "--codex", codex, "service"],
+        subprocess.Popen([sys.executable, "-B", "-m", "tyrell", "--state-dir", str(directory), "--codex", codex, "service"],
                          stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                          start_new_session=True, close_fds=True, cwd=str(package_root))
     for _ in range(60):

@@ -5,9 +5,9 @@ import time
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.service import Service
-from codex_dashboard.worktrees import git
-from codex_dashboard.ui import Dashboard
+from tyrell.service import Service
+from tyrell.worktrees import git
+from tyrell.ui import Dashboard
 
 
 class FilesRefreshTests(unittest.IsolatedAsyncioTestCase):
@@ -38,7 +38,7 @@ class FilesRefreshTests(unittest.IsolatedAsyncioTestCase):
                 s.stop.set()
                 return {'root':directory,'records':{'new':{'path':'new'}},'error':''}
             async def sleep(_): pass
-            with patch.object(s,'dispatch',side_effect=dispatch), patch('codex_dashboard.service.asyncio.sleep',side_effect=sleep):
+            with patch.object(s,'dispatch',side_effect=dispatch), patch('tyrell.service.asyncio.sleep',side_effect=sleep):
                 await s.monitor_files()
             ui=Dashboard(directory,{'threads':{'fixture':{'id':'fixture'}},'tasks':[]})
             ui.selected='thread:fixture';ui.files.locations[ui.selected]={'root':directory,'records':{}}

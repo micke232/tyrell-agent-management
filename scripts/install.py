@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a zsh dispatcher while leaving the real Codex executable untouched."""
+"""Legacy source installer. New installations should use Homebrew or the Python package."""
 import argparse
 import os
 import shlex
@@ -27,7 +27,7 @@ def install(home, project, python):
     else:
         tyrell.symlink_to(executable.name)
     integration = state / "shell.zsh"
-    integration.write_text("# Codex Dashboard: delegate every other command to the original executable.\n"
+    integration.write_text("# Tyrell Agent Management: delegate every other command to the original executable.\n"
                            "# Interactive non-login shells do not read .zprofile.\n"
                            'case ":${PATH}:" in\n'
                            "  *" + shlex.quote(":" + str(executable.parent) + ":") + "*) ;;\n"
@@ -48,7 +48,7 @@ def install(home, project, python):
         if zshrc.exists():
             shutil.copy2(zshrc, state / ("zshrc.backup." + time.strftime("%Y%m%d-%H%M%S")))
         with zshrc.open("a") as f:
-            f.write("\n# Codex Dashboard\n" + source + "\n")
+            f.write("\n# Tyrell Agent Management\n" + source + "\n")
     print("Installed: " + str(executable))
     print("New terminals: tyrell (codex dashboard also works)")
     print("Current terminal: " + source)

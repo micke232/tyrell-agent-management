@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from codex_dashboard.presentation import STATUS, PALETTE, activity_indicator, status_tone, syntax_spans, timeline, viewport
-from codex_dashboard.ui import Dashboard, crop, wrap
+from tyrell.presentation import STATUS, PALETTE, activity_indicator, status_tone, syntax_spans, timeline, viewport
+from tyrell.ui import Dashboard, crop, wrap
 
 
 class Screen:
@@ -45,7 +45,7 @@ class PresentationTests(unittest.TestCase):
         ui.switch("thread:demo-active")
         ui.buffer, ui.cursor = "keep my draft", 4
         before = (ui.selected, ui.focus, ui.buffer, ui.cursor, ui.scroll, ui.view)
-        with patch("curses.curs_set"), patch("sys.stdout") as output, patch("codex_dashboard.ui.copy_text") as copy:
+        with patch("curses.curs_set"), patch("sys.stdout") as output, patch("tyrell.ui.copy_text") as copy:
             ui.render(Screen(38, 120))
             text_y, row = next((y, row) for y, row in ui.history_cells.items() if row["text"])
             points = [(4, ui.hit_rows[0][0], "pointer"),
@@ -88,17 +88,17 @@ class PresentationTests(unittest.TestCase):
             self.assertIn("\x1b]22;default\x1b\\", written)
 
     def test_agent_markdown_is_styled_and_copyable_without_markup(self):
-        text = "Starta om vyn med **Ctrl+Q** och `codex dashboard`.\n\n```json\n{\"text\": \"**literal**\"}\n```"
+        text = "Starta om vyn med **Ctrl+Q** och `tyrell`.\n\n```json\n{\"text\": \"**literal**\"}\n```"
         rows = timeline([{"type": "agentMessage", "text": text}], 90, "chat", wrap, crop)
         body = "\n".join(row["copy_text"] for row in rows if row.get("copy_text") is not None)
-        self.assertIn("Starta om vyn med Ctrl+Q och codex dashboard.", body)
+        self.assertIn("Starta om vyn med Ctrl+Q och tyrell.", body)
         self.assertNotIn("**Ctrl+Q**", body)
         self.assertNotIn("`codex", body)
         self.assertNotIn("```", body)
         self.assertIn('{"text": "**literal**"}', body)
         spans = [span for row in rows for span in row.get("spans", [])]
         self.assertIn(("Ctrl+Q", "strong"), spans)
-        self.assertIn(("codex dashboard", "inlinecode"), spans)
+        self.assertIn(("tyrell", "inlinecode"), spans)
 
     def test_json_tool_output_does_not_appear_after_returning_to_chat(self):
         data = {"connected": True, "threads": {"a": {"id": "a", "name": "Agent", "status": {"type": "idle"}, "items": [
@@ -128,7 +128,7 @@ class PresentationTests(unittest.TestCase):
         ui.key(curses.KEY_UP)
         self.assertEqual(ui.scroll, 1)
         ui.key("x")
-        with patch("curses.curs_set"), patch("codex_dashboard.ui.copy_text") as copy:
+        with patch("curses.curs_set"), patch("tyrell.ui.copy_text") as copy:
             ui.render(Screen(38, 120))
             y, row = next((y, row) for y, row in ui.history_cells.items() if row["text"])
             ui.mouse(0, row["x"], y)

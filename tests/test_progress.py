@@ -1,8 +1,8 @@
 import tempfile
 import unittest
 
-from codex_dashboard.progress import estimate_label, message_plan, parse_estimate
-from codex_dashboard.state import State
+from tyrell.progress import estimate_label, message_plan, parse_estimate
+from tyrell.state import State
 
 
 class ProgressTests(unittest.TestCase):
@@ -16,8 +16,12 @@ class ProgressTests(unittest.TestCase):
             state.event("item/completed", {"threadId": "t", "item": {"id": "done", "type": "agentMessage", "text": "Plan:\n- [x] Gör ändringen"}})
             self.assertEqual(state.thread("t")["plan"][0]["status"], "completed")
             state.event("turn/plan/updated", {"threadId": "t", "turnId": "u", "plan": [{"step": "Native plan", "status": "pending"}]})
-            state.event("item/completed", {"threadId": "t", "item": {"id": "p2", "type": "agentMessage", "text": "Plan:\n- [x] Old checklist"}})
+            state.put_item(state.thread("t"), {"id": "p2", "type": "agentMessage", "text": "Plan:\n- [x] Old checklist"}, historical=True)
             self.assertEqual(state.thread("t")["plan"][0]["step"], "Native plan")
+            state.event("item/completed", {"threadId": "t", "item": {"id": "p3", "type": "agentMessage", "text": "Plan:\n- [x] Original task\n- [>] Added by user"}})
+            self.assertEqual(state.thread("t")["plan"][1], {"step": "Added by user", "status": "inProgress"})
+            state.event("turn/plan/updated", {"threadId": "t", "plan": [{"step": "Latest native update", "status": "in_progress"}]})
+            self.assertEqual(state.thread("t")["plan"][0]["status"], "inProgress")
             self.assertIsNone(message_plan("Example:\nPlan:\n- [x] Not a published plan"))
 
     def test_history_restores_latest_plan_without_resetting_estimate_age(self):

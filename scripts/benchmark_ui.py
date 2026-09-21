@@ -7,7 +7,7 @@ import time
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from codex_dashboard.ui import Dashboard
+from tyrell.ui import Dashboard
 
 
 class Screen:

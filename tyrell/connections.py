@@ -209,7 +209,7 @@ def connections_text(data, demo=False):
             if host:
                 lines.append("GitHub host: " + host)
             if state in ("signin", "account"):
-                lines.append("Sign in from your terminal: codex dashboard login copilot" + (" --host " + host if host else ""))
+                lines.append("Sign in from your terminal: tyrell login copilot" + (" --host " + host if host else ""))
             elif state == "missing":
                 lines.append("Install Copilot CLI to connect it.")
             elif state == "unavailable":

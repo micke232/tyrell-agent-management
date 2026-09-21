@@ -31,7 +31,7 @@ jobs:
       - name: Verify release tag
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          python -c 'import os; from codex_dashboard import __version__; assert os.environ["GITHUB_REF_NAME"] == "v" + __version__, "Tag must match package version"'
+          python -c 'import os; from tyrell import __version__; assert os.environ["GITHUB_REF_NAME"] == "v" + __version__, "Tag must match package version"'
           git merge-base --is-ancestor HEAD origin/main
       - name: Build wheel and Homebrew archive
         env:
@@ -53,7 +53,7 @@ jobs:
           HOMEBREW_NO_ANALYTICS: '1'
         run: |
           brew list python@3.14 >/dev/null 2>&1 || brew install python@3.14
-          brew ruby scripts/verify_homebrew.rb "$PWD/Formula/agent-hub.rb" "$PWD"/dist/homebrew/*-homebrew.tar.gz
+          brew ruby scripts/verify_homebrew.rb "$PWD/Formula/tyrell.rb" "$PWD"/dist/homebrew/*-homebrew.tar.gz
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-files
@@ -81,4 +81,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --draft \
             dist/*.whl dist/homebrew/*-homebrew.tar.gz dist/homebrew/SHA256SUMS \
-            dist/homebrew/repository-files/Formula/agent-hub.rb
+            dist/homebrew/repository-files/Formula/tyrell.rb

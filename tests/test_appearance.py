@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.appearance import Appearance, FIELDS, validate, parse_color, hex_color
-from codex_dashboard.presentation import PALETTE, theme
-from codex_dashboard.ui import Dashboard
+from tyrell.appearance import Appearance, FIELDS, validate, parse_color, hex_color
+from tyrell.presentation import PALETTE, theme
+from tyrell.ui import Dashboard
 from test_native_clipboard import Screen
 
 
@@ -53,7 +53,7 @@ class AppearanceTests(unittest.TestCase):
                         self.assertEqual(marker, '›', (width, sequence, ui.hub_selected))
 
     def test_indented_settings_keyboard_and_mouse_navigation(self):
-        from codex_dashboard.hub_settings import settings_text
+        from tyrell.hub_settings import settings_text
         with tempfile.TemporaryDirectory() as directory, colors():
             ui = Dashboard(directory, {'threads': {}, 'tasks': []})
             ui.open_hub_settings()

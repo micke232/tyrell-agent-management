@@ -3,12 +3,12 @@ require "formula"
 require "tmpdir"
 require "fileutils"
 load ARGV.fetch(0)
-Dir.mktmpdir("agent-hub-brew-") do |directory|
+Dir.mktmpdir("tyrell-brew-") do |directory|
   root = Pathname.new(directory)
   source = root/"source"
   source.mkpath
   system "/usr/bin/tar", "-xzf", ARGV.fetch(1), "--strip-components=1", "-C", source.to_s
-  formula = AgentHub.new("agent-hub", Pathname.new(ARGV.fetch(0)), :stable)
+  formula = Tyrell.new("tyrell", Pathname.new(ARGV.fetch(0)), :stable)
   formula.define_singleton_method(:prefix) { root/"prefix" }
   formula.define_singleton_method(:logs) { root/"logs" }
   formula.instance_variable_set(:@buildpath, source)

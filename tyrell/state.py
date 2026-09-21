@@ -113,7 +113,7 @@ class State:
         if item.get("type") == "fileChange":
             record_changes(thread, item)
         text = item_text(item)
-        if read_plan and item.get("type") == "agentMessage" and thread.get("planSource") != "native":
+        if read_plan and item.get("type") == "agentMessage" and (not historical or thread.get("planSource") != "native"):
             parsed = message_plan(text)
             if parsed:
                 thread.update(plan=parsed[0], estimate=None if historical else parsed[1], planSource="message",
@@ -198,7 +198,7 @@ class State:
                 if task.get("threadId") == tid and task["status"] == "running":
                     task["status"] = {"completed": "completed", "failed": "failed", "interrupted": "interrupted"}.get(turn["status"], "interrupted")
         elif method == "turn/plan/updated":
-            t["plan"] = p["plan"]
+            t["plan"] = [{**step, "status": "inProgress" if step.get("status") == "in_progress" else step.get("status", "pending")} for step in p["plan"]]
             t["planSource"] = "native"
             t["planTurnId"] = p.get("turnId") or t.get("turnId")
             t["planExplanation"] = p.get("explanation")

@@ -192,6 +192,7 @@ class Dashboard:
         self.focus = "sidebar"
         self.buffer = ""
         self.cursor = 0
+        self.last_input_at = None
         self.drafts = {}
         self.pending_messages = {}
         self.notice = "F2 Tabs · F5 Rename · F1 Help"
@@ -514,7 +515,9 @@ class Dashboard:
     def cursor_blink_phase(self, now=None):
         if self.focus != "chat" or self.panel or self.native_copy_mode:
             return None
-        return int((time.monotonic() if now is None else now) / 0.85) % 2
+        now = time.monotonic() if now is None else now
+        elapsed = now - self.last_input_at if self.last_input_at is not None else now
+        return int(max(0, elapsed) / 0.85) % 2
 
     def current(self):
         return next((t for key, t in self.rows if key == self.selected), {})
@@ -647,6 +650,7 @@ class Dashboard:
         return self.draft_cache
 
     def insert_text(self, text):
+        self.last_input_at = time.monotonic()
         self.buffer = self.buffer[:self.cursor] + text + self.buffer[self.cursor:]
         self.cursor += len(text)
         self.preferred_column = None
@@ -1539,6 +1543,8 @@ class Dashboard:
                 self.preferred_column = None
 
     def key(self, key):
+        if self.focus == "chat" and not self.panel:
+            self.last_input_at = time.monotonic()
         if self.native_copy_mode and key in ("\t", "\x1b", "\r", "\n", curses.KEY_ENTER):
             self.native_copy_mode = False
             self.clear_selection()
@@ -1800,7 +1806,13 @@ class Dashboard:
                     # Keep the error backoff separate so responsiveness cannot revive
                     # the disconnected-terminal busy loop.
                     interval = 1 / 60 if received_input else 0.1
-                    self.stopped.wait(max(0, interval - (time.monotonic() - frame_started)))
+                    remaining = max(0, interval - (time.monotonic() - frame_started))
+                    if received_input:
+                        # Wake immediately for the next keystroke instead of
+                        # sleeping through it to enforce a rendering interval.
+                        select.select([sys.stdin], [], [], remaining)
+                    else:
+                        self.stopped.wait(remaining)
         finally:
             self.stopped.set()
             for sig, previous in previous_handlers.items():

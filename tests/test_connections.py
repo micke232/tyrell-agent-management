@@ -6,9 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from codex_dashboard.connections import CopilotConnection, CopilotProbe, normalize_host
-from codex_dashboard.service import Service
-from codex_dashboard.ui import Dashboard, cells
+from tyrell.connections import CopilotConnection, CopilotProbe, normalize_host
+from tyrell.service import Service
+from tyrell.ui import Dashboard, cells
 from test_presentation import Screen
 
 
@@ -61,7 +61,7 @@ class ConnectionChecks(unittest.IsolatedAsyncioTestCase):
             stop = asyncio.Event()
             async def call(method):
                 return {"ping": {"protocolVersion": 3}, "auth.getStatus": auth, "models.list": models}[method]
-            with patch("codex_dashboard.connections.copilot_executable", return_value="copilot"), \
+            with patch("tyrell.connections.copilot_executable", return_value="copilot"), \
                  patch.object(CopilotProbe, "start", new_callable=AsyncMock), \
                  patch.object(CopilotProbe, "call", side_effect=call), \
                  patch.object(CopilotProbe, "close", new_callable=AsyncMock) as close:
@@ -84,7 +84,7 @@ class ConnectionChecks(unittest.IsolatedAsyncioTestCase):
         async def timeout(method):
             stop.set()
             raise asyncio.TimeoutError()
-        with patch("codex_dashboard.connections.copilot_executable", return_value="copilot"), \
+        with patch("tyrell.connections.copilot_executable", return_value="copilot"), \
              patch.object(CopilotProbe, "start", new_callable=AsyncMock), \
              patch.object(CopilotProbe, "call", side_effect=timeout), \
              patch.object(CopilotProbe, "close", new_callable=AsyncMock) as close:

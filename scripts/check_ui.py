@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CODE = '''
 import curses,json
 from pathlib import Path
-from codex_dashboard.ui import Dashboard
-import codex_dashboard.ui as ui_module
+from tyrell.ui import Dashboard
+import tyrell.ui as ui_module
 copied = []
 ui_module.copy_text = copied.append
 data=json.loads(Path("demo.json").read_text())

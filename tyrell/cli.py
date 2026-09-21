@@ -16,15 +16,16 @@ try:
 except ImportError:
     raise SystemExit('Tyrell Agent Management needs a Python installation with curses support.')
 
-from codex_dashboard import __version__
-from codex_dashboard.hub_settings import local_report, diagnostics_text, provider_guide
-from codex_dashboard.client import ensure_service, request
-from codex_dashboard.rpc import Rpc
-from codex_dashboard.service import Service
-from codex_dashboard.ui import Dashboard
-from codex_dashboard.connections import copilot_executable, normalize_host
-from codex_dashboard.terminal_setup import setup_terminal
-from codex_dashboard.startup import Startup, provider_status
+from tyrell import __version__
+from tyrell.paths import state_directory
+from tyrell.hub_settings import local_report, diagnostics_text, provider_guide
+from tyrell.client import ensure_service, request
+from tyrell.rpc import Rpc
+from tyrell.service import Service
+from tyrell.ui import Dashboard
+from tyrell.connections import copilot_executable, normalize_host
+from tyrell.terminal_setup import setup_terminal
+from tyrell.startup import Startup, provider_status
 
 
 def run_dashboard(ui):
@@ -80,8 +81,8 @@ async def doctor(codex):
 def main():
     parser = argparse.ArgumentParser(prog="tyrell", description="Tyrell Agent Management. Closing the UI leaves agent work running.")
     parser.add_argument("--version", action="version", version="Tyrell Agent Management " + __version__)
-    parser.add_argument("--state-dir", default=os.environ.get("CODEX_DASHBOARD_HOME", "~/.codex-dashboard"))
-    parser.add_argument("--codex", default=os.environ.get("CODEX_DASHBOARD_CODEX", shutil.which("codex") or "codex"))
+    parser.add_argument("--state-dir", default=state_directory())
+    parser.add_argument("--codex", default=os.environ.get("TYRELL_CODEX") or os.environ.get("CODEX_DASHBOARD_CODEX", shutil.which("codex") or "codex"))
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("service", help=argparse.SUPPRESS)
     sub.add_parser("status", help="Print persistent service state as JSON")

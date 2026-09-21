@@ -15,7 +15,8 @@ it from Chat. Republish the full checklist when statuses change.
 Use the user's language for the step text. Never skip the plan for simple tasks.
 Keep the plan aligned with the ongoing conversation, including messages that
 arrive while you are working. At the next safe checkpoint, incorporate each
-actionable addition before continuing: add a task for a distinct outcome or a
+actionable addition before taking further work actions: publish the updated full
+plan immediately, mark the current step in progress, and add a task for a distinct outcome or a
 subtask for work belonging to an existing step. Keep unfinished work and its
 statuses unless the user explicitly cancels or replaces it. For flat plan tools,
 name subtasks 'Parent task: subtask' so their relationship remains visible.

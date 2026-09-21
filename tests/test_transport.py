@@ -4,7 +4,7 @@ import hashlib
 import struct
 import unittest
 
-from codex_dashboard.websocket import WebSocket
+from tyrell.websocket import WebSocket
 
 
 class Writer:

@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.files_view import record_changes, status
-from codex_dashboard.state import State
-from codex_dashboard.ui import Dashboard
+from tyrell.files_view import record_changes, status
+from tyrell.state import State
+from tyrell.ui import Dashboard
 from test_presentation import Screen
 
 

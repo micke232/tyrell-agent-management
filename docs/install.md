@@ -3,8 +3,8 @@
 They work. You take the credit.
 
 A terminal dashboard for independent Codex and GitHub Copilot agents.
-Start the app with `tyrell`. The earlier commands (`agent-hub`, `codex dashboard`)
-and package identifier (`agent-hub-management`) remain available for compatibility.
+Start the app with `tyrell`. The Python package is `tyrell-agent-management`
+and its module is `tyrell`.
 This is a preview release: macOS is verified; Linux support is experimental.
 Native Windows is not supported. The app needs Python 3.9+ with curses support.
 
@@ -20,12 +20,12 @@ pipx ensurepath
 Open a new terminal, then install the wheel you received:
 
 ```sh
-pipx install ./agent_hub_management-0.2.0a6-py3-none-any.whl
+pipx install ./tyrell_agent_management-0.2.0a6-py3-none-any.whl
 tyrell
 ```
 
 The package is local; it has not been published to PyPI. Do not use
-`pipx install agent-hub-management` until a trusted package registry is configured.
+`pipx install tyrell-agent-management` until a trusted package registry is configured.
 For Linux pipx installation, see https://pipx.pypa.io/stable/how-to/install-pipx.html.
 No third-party Python runtime packages are required. Git is needed for worktrees,
 file diffs and handovers. Ghostty is optional; terminal features vary.
@@ -42,7 +42,7 @@ https://ghostty.org/docs/install/binary for installation.
 
 Other terminals are supported on a best-effort basis; mouse pointers, clipboard
 shortcuts and keyboard reporting may differ. Choosing Ghostty does not replace
-or reconfigure your current terminal: open Ghostty and run `agent-hub` there.
+or reconfigure your current terminal: open Ghostty and run `tyrell` there.
 
 After terminal selection, the first start opens **Settings**. Press **F10** or type `/settings` to return.
 Settings displays provider connections, CLI compatibility, installed versions,
@@ -117,7 +117,7 @@ agents are ready, then:
 
 ```sh
 tyrell stop
-pipx install --force ./agent_hub_management-0.2.0a6-py3-none-any.whl
+pipx install --force ./tyrell_agent_management-0.2.0a6-py3-none-any.whl
 tyrell
 ```
 
@@ -125,10 +125,10 @@ Use the filename of the new release when upgrading. To remove the app:
 
 ```sh
 tyrell stop
-pipx uninstall agent-hub-management
+pipx uninstall tyrell-agent-management
 ```
 
-History, worktrees and settings remain in `~/.codex-dashboard`.
+History, worktrees and settings remain in `~/.tyrell`.
 These are personal data: share the wheel, not this directory.
 The existing source-based `codex dashboard` integration remains supported;
 installing this package does not modify your shell or replace the Codex executable.
@@ -188,9 +188,16 @@ an element in the miniature to edit it directly. In small windows, scroll the
 preview; it also follows the selected element automatically. R restores the
 selected element and **Use default colors** (D) restores all interface colors.
 
-Settings are stored per user in `~/.codex-dashboard/appearance.json` (or the
+Settings are stored per user in `~/.tyrell/appearance.json` (or the
 chosen state directory), independent of repositories, agents and model accounts.
 Startup colors and every status color are fixed. Agent names have a separate
 color so changing them cannot change the Waiting status. The editor keeps its
 own readable colors even when previewing low-contrast combinations.
 Terminals without 256-color support keep the existing fallback colors.
+
+## Existing installations
+
+If `~/.codex-dashboard` already exists, Tyrell reuses it so saved chats and worktrees
+remain available. Nothing is moved automatically. `TYRELL_HOME` or `--state-dir`
+selects another directory; `CODEX_DASHBOARD_HOME` remains a legacy fallback.
+The old source launcher and `agent-hub` command remain compatibility entry points.

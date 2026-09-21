@@ -31,7 +31,7 @@ class Rpc:
             self.websocket = WebSocket(self.process.stdout, self.process.stdin)
             await self.websocket.handshake()
         self.reader_task = asyncio.create_task(self.read())
-        await self.call("initialize", {"clientInfo": {"name": "codex_dashboard", "title": "Tyrell Agent Management", "version": "0.1.0"},
+        await self.call("initialize", {"clientInfo": {"name": "tyrell", "title": "Tyrell Agent Management", "version": "0.1.0"},
                                        "capabilities": {"experimentalApi": True}})
         await self.send({"method": "initialized"})
 

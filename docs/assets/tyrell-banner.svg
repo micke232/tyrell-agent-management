@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title description">
+  <title id="title">Tyrell Agent Management</title>
+  <desc id="description">A retro science fiction terminal in green and amber. They work. You take the credit. Independent agents. Isolated workspaces.</desc>
+  <defs>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 3.5H4" stroke="#9cffb1" stroke-opacity=".035"/></pattern>
+    <filter id="glow" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="2"/></filter>
+  </defs>
+  <rect width="1200" height="320" rx="12" fill="#0b1411"/>
+  <rect x="16" y="16" width="1168" height="288" rx="6" fill="none" stroke="#2d4d3b"/>
+  <path d="M40 63H1160 M40 249H1160" stroke="#2d4d3b"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="42" y="46" fill="#c8a86c" font-size="13" letter-spacing="2">INTERFACE 2037 // WORKFORCE CONTROL</text>
+    <text x="1158" y="46" text-anchor="end" fill="#7ca38b" font-size="12">READY FOR INQUIRY</text>
+    <text x="40" y="151" fill="#adffc1" opacity=".4" filter="url(#glow)" font-size="70" font-weight="700" letter-spacing="6">TYRELL</text>
+    <text x="40" y="151" fill="#b4ffc5" font-size="70" font-weight="700" letter-spacing="6">TYRELL</text>
+    <text x="43" y="186" fill="#94ba9f" font-size="20" letter-spacing="4">AGENT MANAGEMENT</text>
+    <text x="43" y="224" fill="#dbebcf" font-size="17">They work. You take the credit.</text>
+    <g fill="#6e967d" font-size="13">
+      <text x="760" y="113">01 / CONNECT PROVIDERS</text>
+      <text x="760" y="145">02 / ISOLATE WORKSPACES</text>
+      <text x="760" y="177">03 / DISPATCH AGENTS</text>
+      <text x="760" y="209" fill="#c8a86c">04 / REVIEW THE WORK</text>
+    </g>
+    <text x="42" y="280" fill="#7ca38b" font-size="12" letter-spacing="1">CODEX + COPILOT  /  GIT WORKTREES  /  YOUR TERMINAL</text>
+    <text x="1158" y="280" text-anchor="end" fill="#c8a86c" font-size="12">LOCAL CONTROL</text>
+  </g>
+  <rect width="1200" height="320" rx="12" fill="url(#scan)"/>
+</svg>

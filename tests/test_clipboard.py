@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.clipboard import copy_text, selection_text
+from tyrell.clipboard import copy_text, selection_text
 
 
 class ClipboardTests(unittest.TestCase):
@@ -12,7 +12,7 @@ class ClipboardTests(unittest.TestCase):
         self.assertEqual(selection_text(rows, (1, 0), (1, 0)), "")
 
     def test_clipboard_receives_utf8_selection_as_stdin_without_shell(self):
-        with patch("codex_dashboard.clipboard.shutil.which", return_value="/usr/bin/pbcopy"), patch("codex_dashboard.clipboard.subprocess.run") as run:
+        with patch("tyrell.clipboard.shutil.which", return_value="/usr/bin/pbcopy"), patch("tyrell.clipboard.subprocess.run") as run:
             copy_text("å猫 $(not a command)")
             self.assertEqual(run.call_args.args[0], ["pbcopy"])
             self.assertEqual(run.call_args.kwargs["input"], "å猫 $(not a command)".encode())

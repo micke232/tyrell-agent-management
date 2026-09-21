@@ -10,3 +10,5 @@ build/
 .venv/
 .env
 .env.*
+
+/codex_dashboard

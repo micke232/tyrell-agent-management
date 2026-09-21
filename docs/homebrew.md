@@ -47,8 +47,8 @@ directly to `main`.
 
 ## Release
 
-1. Update `codex_dashboard/__init__.py` to a new version on a feature branch.
-   Run the release preparation commands below and commit `Formula/agent-hub.rb`
+1. Update `tyrell/__init__.py` to a new version on a feature branch.
+   Run the release preparation commands below and commit `Formula/tyrell.rb`
    in that same PR. CI verifies its URL and checksum against the actual build.
 2. Merge its pull request after checks pass.
 3. From the updated `main`, create and push the matching tag, for example:
@@ -74,7 +74,7 @@ not overwrite an existing release; use a new version for changed packages.
 
 ```sh
 brew tap micke232/tyrell-agent-management https://github.com/micke232/tyrell-agent-management.git
-brew install agent-hub
+brew install tyrell
 tyrell
 ```
 
@@ -83,7 +83,7 @@ installs Python and Git. Ghostty remains optional; model CLIs and their sign-in 
 configured separately. `tyrell setup` and F10 Settings guide connection setup.
 
 For updates, stop idle agents with `tyrell stop`, then run `brew update` and
-`brew upgrade agent-hub`.
+`brew upgrade tyrell`.
 
 ## Local verification
 
@@ -94,8 +94,8 @@ python3.14 -m venv .venv
 .venv/bin/python scripts/prepare_release.py
 HOMEBREW_DEVELOPER=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
   brew ruby scripts/verify_homebrew.rb \
-  "$PWD/Formula/agent-hub.rb" \
-  "$PWD/dist/homebrew/agent-hub-0.2.0a6-homebrew.tar.gz"
+  "$PWD/Formula/tyrell.rb" \
+  "$PWD/dist/homebrew/tyrell-0.2.0a6-homebrew.tar.gz"
 ```
 
 Use the current version's wheel filename and an empty build output directory when

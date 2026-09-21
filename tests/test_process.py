@@ -10,7 +10,7 @@ import time
 import unittest
 from pathlib import Path
 
-from codex_dashboard.client import request
+from tyrell.client import request
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,7 +27,7 @@ class ProcessTests(unittest.TestCase):
             git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "fixture")
             # Run the real Service with a deterministic external JSONL app-server fixture.
             runner = root / "runner.py"
-            runner.write_text("import asyncio,sys\nfrom pathlib import Path\nsys.path.insert(0," + repr(str(ROOT)) + ")\nfrom codex_dashboard.service import Service\nasync def main():\n    await Service(sys.argv[1], [sys.executable, '-B', " + repr(str(ROOT / "tests/fake_codex.py")) + "]).run()\nasyncio.run(main())\n")
+            runner.write_text("import asyncio,sys\nfrom pathlib import Path\nsys.path.insert(0," + repr(str(ROOT)) + ")\nfrom tyrell.service import Service\nasync def main():\n    await Service(sys.argv[1], [sys.executable, '-B', " + repr(str(ROOT / "tests/fake_codex.py")) + "]).run()\nasyncio.run(main())\n")
             state = root / "state"
             log = (root / "log").open("w")
             process = None

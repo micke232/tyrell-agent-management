@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from codex_dashboard.rpc import Rpc
+from tyrell.rpc import Rpc
 
 
 async def main():

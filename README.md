@@ -1,476 +1,332 @@
+<p align="center">
+  <img src="docs/assets/tyrell-banner.svg" alt="Tyrell Agent Management — They work. You take the credit." width="100%">
+</p>
+
 # Tyrell Agent Management
 
-*They work. You take the credit.*
+**Run independent coding agents in parallel, give each one its own workspace, and review their work from one terminal.**
 
-En lokal terminalvy för agenter: chattar i sidopanelen, aktuell aktivitet,
-modell, uppgifter och ett chattfält längst ner. Separata Codex- och Copilot-agenter
-kan köra uppgifter i samma dashboard.
-Starta dashboarden med `tyrell` (`agent-hub` fungerar också); den befintliga genvägen
-`codex dashboard` fungerar fortfarande. Se [installationsguiden](docs/install.md)
-för ett delbart wheel-paket, CLI-beroenden och inloggning. Kräver Python 3.9+ och
-minst en ansluten leverantör. macOS är verifierat; Linux är experimentellt.
+Tyrell is a local terminal application for managing **Codex** and **GitHub Copilot**
+agents. Each agent has its own conversation, model, plan, settings and working
+folder. You can let one agent investigate a bug, another build a feature, and a
+third work on infrastructure without constantly changing branches in your editor.
 
-**F10 Settings** samlar anslutningar, installationshjälp, GitHub-värd och diagnostik.
-Första starten öppnar Settings. Agentens projektspecifika val finns kvar i Setup.
+The key is **Git worktrees**: agents can work on separate copies of the same
+repository while your normal checkout stays on its current branch. When an agent
+finishes, review its changes and ask it to prepare a local branch you can check out.
+You decide what to keep, merge or publish.
 
-I **Files → Open folder…** kan du navigera till en mapp och välja **OK**.
-Mappen blir rot för Git-ändringarna i Files, utan att flytta agentens arbete.
-**Use agent workspace** återgår till agentens projekt eller worktree.
-Mappvalet behålls per agent medan vyn är öppen.
+> **Preview software.** macOS is the verified platform; Linux is experimental.
+> Ghostty is the primary terminal used for the interface. Other terminals can work,
+> but mouse, clipboard and keyboard support differ. Native Windows is unsupported.
 
-## Homebrew
+[Get started](#get-started) · [Worktree workflow](#worktree-workflow) ·
+[Controls](#controls) · [Agent setup](#configure-how-an-agent-works) ·
+[Installation details](docs/install.md) · [Releases](docs/homebrew.md)
 
-En Homebrew-formula och reproducerbart releasearkiv kan förberedas med
-`scripts/build_homebrew.py`. Se [publicering via Homebrew](docs/homebrew.md).
-Det kräver inget Homebrew-konto; tap och release publiceras på GitHub.
+## What Tyrell does
 
-Ett GitHub Actions-workflow testar pull requests till `main`, bygger paket och
-verifierar Homebrew-installationen. Versionstaggar skapar ett releaseutkast efter
-godkända tester. Kod och formula ändras via feature branches och pull requests.
-Se [releaseflödet och branchskydd](docs/homebrew.md).
-
-## Anslutningar och Copilot
-
-Headern visar **Codex** och **Copilot** var för sig. Grönt betyder att tjänsten
-är ansluten; **Sign in** betyder att Copilot behöver inloggning. **Unavailable**
-betyder att inloggningen finns men modellistan inte kan hämtas. Om kontakten med
-dashboardens bakgrundstjänst bryts markeras båda som **Offline**.
-Klicka på statusen eller skriv `/connections` för detaljer och rapporterade modeller.
-Modellerna är en katalog; varje modell har inte provkörts.
-
-Installera GitHubs officiella Copilot CLI separat, exempelvis med Node.js 22+:
-
-```sh
-npm install --global --prefix "$HOME/.local" @github/copilot
-codex dashboard login copilot
-```
-
-För GitHub Enterprise Cloud med egen värd:
-
-```sh
-codex dashboard login copilot --host https://company.ghe.com
-```
-
-Den valda värden sparas, så senare inloggningar använder samma värd. Copilot hanterar
-OAuth och nyckelringen; dashboarden läser eller sparar inga inloggningstoken.
-`copilot` hämtas från PATH eller `~/.local/bin/copilot`; `AGENT_HUB_COPILOT` kan ange
-en annan installerad binär. Ingen automatisk installation eller uppdatering görs
-när dashboarden startar. CLI-installationen för denna implementation verifierades
-med version 1.0.86 och JSON-RPC-protokoll 3.
-
-En separat anslutning använder CLI:ns serverläge för `ping`, `auth.getStatus` och
-`models.list`. Den skapar inga Copilot-sessioner, skickar inga promptar och kör inga
-agentverktyg. Copilot-modeller blandas inte in i Codex-agenternas modellval.
-F3 väljer namn och sedan leverantör/modell. En Copilot-agent har en egen bestående
-CLI-session och använder samma Setup, mappimport, worktrees och porttilldelning.
-Chattsvar strömmas in; planer visas i Plan och verktygsaktivitet i Tools.
-Frågor och godkännanden öppnas via Waiting eller `/requests`. Godkännanden gäller
-bara den aktuella förfrågan. `/interrupt` avbryter Copilot-sessionens aktuella arbete.
-Namnbyte, arkivering och återställning påverkar dashboardens katalog, inte CLI-historiken.
-
-Copilot körs i en separat CLI-process som ägs av bakgrundstjänsten. Att stänga
-vyn stoppar inte arbetet; att stoppa bakgrundstjänsten avbryter pågående Copilot-arbete.
-Nästa meddelande återupptar den sparade sessionen, utan automatisk omsändning.
-Codex-avbrott rensar inte Copilots frågor. Copilot kan användas utan Codex-anslutning.
-
-Copilot använder CLI:ns och organisationens behörighetspolicy, inte Codex sandbox.
-**Setup → Access → Copilot permissions** har två lägen:
-- **Ask** visar förfrågningar när CLI behöver godkännande.
-- **Autonomous** tillåter verktyg, filåtkomst och nätverk utan rutinmässiga dialoger.
-
-Ändringen gäller nästa nya tur. Organisationens regler kan fortfarande stoppa
-åtgärder och frågor till användaren är fortsatt interaktiva. Codex fil- och
-sandboxreglage påverkar inte Copilot. Reasoning/speed använder modellens standard.
-Tools visar kommandon och strömmad verktygsutdata, separat från Chat.
-Files samlar Git-diffar, även för ändringar via shellkommandon. I en isolerad
-worktree jämförs filerna med startcommitten; annars med HEAD. Även ändringar från
-andra verktyg eller en överlämning ingår. Binära filer visas utan textdiff;
-kända känsliga konfigurationsfiler visas utan innehåll. Git-insamlingen är begränsad
-till 250 filer och 60 000 tecken per diff, och en begränsning visas i vyn.
-
-**F6**, **/handoff** eller **Setup → Hand over to another agent** kopierar arbete
-till en ny agent: välj namn och leverantör/modell, granska sammanhanget och skicka
-sedan ett meddelande för att starta. Källagenten måste vara redo. En ny isolerad
-Git-worktree utgår från källans HEAD och får dess ocommittade ändringar och
-icke-ignorerade nya filer. Originalet ändras inte. Ignorerade beroenden, kända
-lokala autentiseringsfiler och otrackade specialfiler kopieras inte; utelämnade
-filer listas. Gränser: 8 MB tracked patch, 20 MB/1 000 otrackade filer.
-Överlämningen inkluderar den senaste planen och upp till 12 senaste chattmeddelanden,
-inte hela sessionens interna historik. Filöverlämning kräver ett Git-repo.
-Den nya agenten börjar med interaktiva standardbehörigheter; välj autonom åtkomst
-för den agenten i Setup om det önskas. Överlämning gör inga commits, pushes eller merges.
-
-**Setup → Verify GHE repository access** kan kontrollera
-Git-läsåtkomsten för ditt valda repo; datum och repo visas i Connections. Det innebär inte att
-en separat GitHub MCP-connector har verifierats. Verifieringen ändrar inget i repot.
-Anslutningsstatus sparas inte som bestående sanning; den kontrolleras på nytt
-vid start och uppdateras automatiskt efter inloggning. Copilot-anslutningen lever
-i dashboardens bakgrundstjänst och stoppas när den tjänsten stoppas.
-
-`codex dashboard connections` visar samma status som JSON utan chatthistorik.
-Se [installation](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)
-och [inloggning](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli)
-i GitHubs dokumentation. Protokollanropen följer
-[GitHubs SDK](https://github.com/github/copilot-sdk/blob/main/python/copilot/client.py).
-
-## Starta
-
-```sh
-codex dashboard
-```
-
-Installera integrationen med `python3 -B scripts/install.py`. Den lägger till en
-zsh-funktion och kommandot `~/.local/bin/codex-dashboard`. Codex-binären ändras
-inte; andra anrop, exempelvis `codex resume`, skickas vidare som vanligt.
-Installationen säkerhetskopierar `.zshrc` innan en rad läggs till.
-
-Öppna en ny terminal efter installationen, eller kör:
-
-```sh
-source ~/.codex-dashboard/shell.zsh
-codex dashboard
-```
-
-Projektmappen innehåller implementationen och behöver ligga kvar.
-Utan installation kan du köra `python3 -B dashboard.py` härifrån.
-
-## Använd vyn
-
-| Kommando/tangent | Funktion |
+| Capability | What it helps you do |
 | --- | --- |
-| Tab | Växla fokus: sidopanel → historik → Prompt |
-| Piltangenter | Välj agent i sidopanelen, scrolla i historiken eller redigera i Prompt |
-| Mushjul / styrplatta | Skrolla konversationen eller verktygsloggen |
-| Klick | Välj agent, flik eller chattfält |
-| F2 **Tabs** | Växla **Chat → Plan → Tools → Files → Processes → Setup → Chat** |
-| Esc | Återgå direkt till **Chat**; stäng paneler eller avbryt formulär |
-| `/tasks` | Öppna **Plan**, en checklista som uppdateras löpande |
-| Ctrl+O / `/log` | Visa verktygens kommandon och utdata under **Tools**; `/chat` återgår till chatten |
-| F3 | Skapa agent: namn → modell |
-| F4 / `/archives` | Öppna arkivet; F4 återgår till agenterna |
-| F5 | Byt namn på vald agent: skriv nytt namn, Enter sparar, Esc avbryter |
-| F1 | Visa hjälpen |
-| `/mouse` | Slå av/på musfångsten |
-| Enter i chattfältet | Skicka ett meddelande; styr pågående arbete om agenten redan arbetar |
-| Shift+Enter / Alt+Enter | Lägg till en ny rad i meddelandet |
-| Cmd+Enter (Ghostty) | Skicka styrning till agenten vid nästa säkra avstämning |
-| Piltangenter i chattfältet | Flytta markören och redigera texten |
-| PageUp / PageDown | Bläddra i konversationen |
-| `/new` | Skapa agent: namn → modell, utan krav på repository |
-| `/start` | Starta den valda planerade uppgiften i en ny worktree |
-| `/rename [nytt namn]` | Byt namn på vald agent; utan namn öppnas ett namnfält |
-| `/models` | Visa modeller och resonemangsnivåer från din Codex-installation |
-| `/model NAMN NIVÅ` | Välj modell och nivå för den valda chattens nästa tur |
-| `/default NAMN NIVÅ` | Välj standard för nya uppgifter |
-| `/request` / `/requests` | Läs och besvara väntande godkännanden/frågor |
-| `/interrupt` | Avbryt den valda agentens pågående tur |
-| `/remove [namn]` | Dölj vald eller namngiven agent i sidopanelen |
-| `/hidden` | Visa agenter som dolts från sidopanelen |
-| `/archive [namn]` | Arkivera vald eller namngiven inaktiv chatt i Codex |
-| `/restore [namn]` | Lägg tillbaka en dold eller arkiverad agent i sidopanelen |
-| `/agents` | Återgå till de vanliga agenterna |
-| `/help` | Visa hjälpen |
-| Ctrl+Q, Ctrl+C, `/quit` | Stäng vyn; bakgrundsarbetet fortsätter |
+| Independent agents | Keep conversations and work contexts separate; choose Codex or Copilot per agent. |
+| Isolated workspaces | Work on different tasks and base branches in the same repository simultaneously. |
+| Plans and progress | Follow a checklist in **Plan** while keeping the conversation readable. |
+| File changes | Browse changed files and diffs in **Files** without searching through tool output. |
+| Tools and processes | Inspect commands, logs, workspace-related processes and listening ports separately. |
+| Project-aware setup | Import package scripts and project guidance, including applicable `AGENTS.md` files. |
+| Access controls | Choose how much access an agent gets and when it needs approval. |
+| Provider handoff | Pass work and a summary to a new agent, including one using the other provider. |
+| Persistent work | Close the dashboard view and return later while the background service keeps running. |
 
-Klistra in flerradig text i terminaler som stödjer bracketed paste. Texten skickas
-först när du trycker Enter. Esc stänger paneler eller avbryter ett formulär.
-Inmatningsfältet bryter långa rader automatiskt, bevarar inklistrade radbrytningar
-och växer upp till sex synliga rader. Längre utkast skrollas med markören.
-Du kan klicka i texten för att placera markören. Alt+Enter fungerar för en ny rad
-även i terminaler som inte skickar en separat tangentkod för Shift+Enter.
+Tyrell coordinates installed provider CLIs; it is not a model or a replacement for
+your provider account. Provider availability, models and organizational policies
+still apply. It does not automatically merge work or publish your branches.
 
-Scrollbaren till höger visar din position i historiken. Klicka i spåret eller dra
-handtaget för att bläddra; mushjul och PageUp/PageDown fungerar som tidigare.
-Klicka var som helst i sidopanelen för att fokusera den, eller på en agents
-namn eller statusprick för att välja agenten. Flikarna Chat, Plan, Tools, Files, Processes och Setup är klickbara
-och fokuserar innehållet när du öppnar dem.
-I Ghostty visas en handpekare över agenter och flikar samt en I-balk över
-markerbar chatttext och skrivfältet. Agenter visas alfabetiskt, en per rad, med en färgad statusprick till vänster.
-Vald agent har understruket namn. Långa namn kortas med …; hela namnet sparas.
-Tabba till historiken eller klicka i den. Piltangenterna scrollar historiken;
-dra över text för att markera och tryck Cmd+C för att kopiera markeringen
-till urklipp, utan sidopanel eller meddelanderamar. Musen kopierar aldrig automatiskt. Det behövs inget
-separat kopieringsläge. Den markerade texten hålls stabil medan nya svar kommer;
-Tab, Esc eller en ny scrollning återgår till uppdaterad historik. Utkastet bevaras.
-På macOS används systemets `pbcopy`; Linux behöver `wl-copy` eller `xclip`.
-Kopieringen visar varken instruktioner eller något kvitto i vyn.
-Dashboarden använder Kitty-tangentprotokollet för Cmd+C. I Ghostty behövs
-`keybind = performable:super+c=copy_to_clipboard:mixed`: terminalens egen
-markering kopieras som vanligt, annars skickas Cmd+C till programmet.
-Ladda om Ghosttys konfiguration med Cmd+Shift+, efter en ändring.
-I Apples Terminal visas **[Copy]** bredvid agentnamnet när chatttext är
-markerad. Klicket kopierar dashboardens markering med pbcopy, utan automatisk
-kopiering eller kvitto. Detta är en reservväg för kopiering; Cmd+C-kopplingen
-och byte av muspekarens form är inte lösta för Terminal.app. Cmd+V hanteras av
-terminalen; dashboarden tar emot bracketed paste i Prompt.
-Meddelandenas rubriker skrollas tillsammans med innehållet; inga fasta
-”continued”-rubriker läggs ovanpå historiken.
+## Get started
 
-Dina meddelanden visas direkt när du skickar dem. Kortet visar **Sending…** tills
-Codex bekräftar mottagandet, därefter **Delivered**. Detta är ett leveranskvitto;
-Codex skickar inget säkert läskvitto. Vid osäker leverans visas **Delivery unconfirmed**
-och texten återställs i utkastet. Meddelanden matchas med egna id:n så att samma
-text kan skickas flera gånger utan att serverns återkoppling skapar dubbletter.
+### 1. Install Tyrell
 
-Dashboardens gränssnitt är på engelska. Chattinnehåll, uppgiftstexter och agentnamn
-behåller sitt språk. Skrivfältet heter **Prompt**. På Mac kan du behöva Fn+F2 eller
-Fn+F5 om macOS använder funktionstangenterna för systemfunktioner.
-
-**Setup** innehåller modell/hastighet, svarslängd, uppdragsbeskrivning, projektkontext,
-tester, Node-processer/portar, Terraform, kodkvalitet och Git-överlämning. Inställningar
-kan sparas för agenten, ett projekt eller som gemensamma förval. De är generella;
-projektmetadata importeras bara till en valfri projektprofil. Läs [Setup-guiden](docs/agent-setup.md).
-
-Chattvyn visar blå kort märkta **YOU** och gröna kort märkta **AGENT**. Kommandon,
-rå utdata och resonemang ligger separat under **TOOLS**. Där färgmarkeras
-kommandon, strängar, tal, kommentarer och fel. Avsändaren syns även när du
-skrollar mitt i ett långt meddelande. Färgtemat har stöd för både 256 färger
-och enklare terminaler; textetiketterna fungerar även utan färg.
-Agentsvar får terminalformatering för fetstil, rubriker, listor, inlinekod och
-kodblock. Markeringar som stjärnor och kodstaket visas inte runt formaterad text;
-kodblock behåller sitt innehåll. Kopiering hämtar den visade texten utan chattramar.
-Vid flikbyte ritas terminalen om helt så att rester från verktygsutdata inte ligger kvar.
-
-Sidopanelen visar gula agentnamn på en rad vardera, i bokstavsordning.
-Vald agent har understruket namn utan bakgrundsmarkering. Status visas enbart
-som en prick till vänster: **blå = Working**, **grön = Ready**, **gul = Waiting**.
-Statusändringar påverkar inte ordningen. Långa namn kortas med … i listan.
-`/rename Nytt namn` sparar namnet i Codex så att det finns kvar efter omstart.
-
-Den rörliga aktivitetsstapeln och punkterna visar en aktiv agent, utan att ange
-en uppskattad procent. Meddelanden visas bara i chatten, under avgränsningslinjen.
-Planer visas enbart i **Plan**-fliken. **F2** växlar till fliken med
-hela checklistan: **[✓] Done**, **[▶] In progress**, **[ ] Pending**.
-Långa listor kan skrollas, och markeringarna uppdateras när agentens plan ändras.
-Vid frågor och godkännanden stannar
-animationen. Mushjul och styrplatta bläddrar i historiken även över skrivfältet;
-piltangenterna redigerar utkastet och PageUp/PageDown bläddrar i historiken.
-
-För meddelanden som skickas från dashboarden får agenten en instruktion att dela en
-plan för **varje uppgift**, även en enda åtgärd eller ett kort svar, och ange ungefärlig återstående tid när det går att
-bedöma. Tidsintervallet kommer från agenten och visas tillsammans med bedömningens
-ålder. Dashboarden räknar inte fram en prognos från antalet färdiga uppgifter.
-Saknas bedömning visas **Time remaining: not estimated**; en utgången bedömning markeras
-för uppdatering. Instruktionen skickas även när ett meddelande styr en pågående
-tur. Nya önskemål ska läggas till i den befintliga planen som uppgifter eller
-deluppgifter, med prioritet i Plan-fliken och ett vanligt svar i chatten som avslutas med **Plan uppdaterad**. Checklistan visas bara i Plan-fliken. Ofärdiga uppgifter
-behålls tills användaren ändrar eller avbryter dem. I platta planer skrivs
-deluppgifter som `Huvuduppgift: deluppgift`. Agenten behöver fortfarande publicera
-planen; dashboarden skapar inte uppgifter från chattext på egen hand.
-En planförklaring med `ETA: 5-10 min` stöds.
-Om agenten saknar planverktyget kan den publicera ett meddelande som börjar med
-`Plan:` följt av Markdown-raderna `- [ ] Steg`, `- [>] Pågående steg` och
-`- [x] Färdigt steg`. Dashboarden visar checklistan i Plan-fliken och läser
-senare statusuppdateringar i samma format. Den markerar inget klart på egen hand.
-Planblocken döljs i Chat; vanliga svar efter checklistan och dina egna meddelanden
-visas som vanligt. Hela originalmeddelandet finns kvar i den sparade historiken.
-
-`/remove` döljer bara agenten i denna dashboard. Chatten och worktreen finns kvar,
-och ett pågående arbete fortsätter. Valet sparas mellan omstarter. `/hidden`
-visar de dolda agenterna så att du kan välja en och köra `/restore`.
-
-`/archive` använder Codex eget arkiv och påverkar därför också andra Codex-klienter.
-Aktiva eller väntande agenter måste först avbrytas med `/interrupt` eller bli klara.
-I arkivet väljer du en chatt med piltangenterna eller musen, läser historiken och
-kör `/restore` för att lägga tillbaka den i sidopanelen. Att läsa arkivet startar
-ingen agenttur. Du kan även ange ett namn, exempelvis `/remove Min agent`; om
-namnet matchar flera chattar behöver du välja en eller ange ett mer exakt namn.
-
-Uppgifter skapade med CLI-kommandot `plan` börjar från projektets **incheckade HEAD** i en egen branch under
-`dashboard/…`. Din vanliga branch och oincheckade ändringar lämnas orörda.
-Worktrees ligger i `~/.codex-dashboard/worktrees/`. Granska och slå ihop arbetet
-med Git när du är nöjd; dashboarden slår inte ihop eller tar bort worktrees.
-
-F3 och `/new` skapar en agent med namn och modell (pil upp/ned väljer modell).
-Ingen arbetsuppgift skickas automatiskt. Agenten börjar i en egen mapp under
-`~/.codex-dashboard/agents/`. Välj **Setup → This agent / task → Choose folder…**
-för att bläddra bland mappar och koppla en arbetsmapp. Klick eller Enter/högerpil
-öppnar en mapp; vänsterpil går till föräldramappen. Välj **OK · Use this folder**
-för att spara och importera profilen. Esc avbryter. Arbetsmappen och upptäckta
-Git-/package.json-uppgifter visas i Setup. Scripts och portar läses utan att köras. Mappbytet gäller
-nästa tur och kräver att agenten är redo.
-
-**Setup → Access** visar senast kända filåtkomst och godkännandepolicy.
-Välj filåtkomst (**Keep current**, **Read only**, **Workspace**, **Full access**),
-godkännanden och nätverksåtkomst för nästa tur. Full access inkluderar nätverk;
-Keep current behåller policyn. Never visar inga godkännandedialoger; med en
-begränsad sandbox kan blockerade åtgärder fortfarande nekas.
-Snabbvalet **Autonomous / full access** sätter Full access och Never tillsammans.
-**Read only** och **Workspace + network** finns också som snabbval.
-**Access explained…** beskriver alternativen. Sparade ändringar som skiljer sig
-från rapporterad session markeras **Saved changes pending next turn**.
-De tillämpas när nästa meddelande skickas till en redo agent. Att styra en redan
-arbetande agent ändrar inte dess behörigheter och löser inte en väntande förfrågan.
-Ändringarna skickas som API-inställningar, inte bara textinstruktioner.
-Befintliga chattar behåller sin åtkomst med standardvalet Keep current. Modellval gäller nästa tur;
-meddelanden till en redan arbetande agent ändrar inte dess pågående modell.
-
-## Isolerat arbete med Git worktree
-
-Efter mappval/import visas **Setup → Git worktree** när mappen tillhör ett Git-repo.
-**Isolated worktree** är på som standard. **Base branch** öppnar en lista med
-`main` överst, följd av andra branches. Klick eller Enter väljer; Esc avbryter.
-Välj **Base branch** (tomt betyder
-repoets aktuella incheckade HEAD) och skicka sedan uppgiften. Första meddelandet
-skapar agentens egen worktree under `~/.codex-dashboard/worktrees/`. Nästa
-meddelande återanvänder den. Ingen worktree skapas av att bara ändra Setup.
-
-Varje agent har egen chatt, plan, bascommit och arbetsmapp. Flera agenter kan
-arbeta samtidigt från olika branches i samma repo. Skapa en ny agent för ett
-annat branchsammanhang. Den vanliga checkouten byter inte branch och dess
-oincheckade filer kopieras inte. Mapp och bas kan inte bytas för en agent som
-redan har en worktree. Mappar utan Git fortsätter som vanliga arbetsmappar.
-
-När resultatet är klart väljer du **Local review branch** (eller automatiskt namn)
-och **Prepare local branch…**. Klicket ber agenten granska och committa sitt
-avsedda arbete i worktreen och skapa en lokal branch vid resultatet. Agenten ska
-lämna worktreen på detached HEAD så branchen kan checkas ut i en annan checkout.
-Tillfälliga worktrees kräver inget Jira-ID eller slutligt branchnamn. Du väljer
-själv namnet på granskningsbranchen senare; wikins namnkonvention är en referens
-för eventuell publicering, inget krav för lokal granskning. Befintliga branches skrivs inte över. Ingen push, PR eller automatisk merge ingår.
-Setup visar det begärda branchnamnet; agentens svar bekräftar faktiskt resultat,
-commit och utförda kontroller. Det är ett agentuppdrag, inte ett löfte om att
-branchen är klar direkt när knappen trycks.
-
-AGENTS.override.md prioriteras över AGENTS.md i samma mapp vid import. Tillämpliga
-instruktioner i överordnade mappar inkluderas. Projektets egna instruktioner läses
-även när de är lokala och inte följer med från Git till den nya worktreen.
-
-## Status och bakgrundsarbete
-
-- `working`: Codex rapporterar en aktiv tur.
-- `approval` / `question`: Codex väntar på godkännande eller svar.
-- `quiet (active)`: ingen observerad aktivitet under två minuter; det bevisar inte
-  att agenten har fastnat.
-- `idle` / `saved`: ingen aktiv tur, respektive en sparad chatt som inte är laddad.
-- `offline`: anslutningen är bruten; aktuell agentstatus kan inte verifieras.
-
-Uppgiften markeras klar när dess tur slutförs. Det ersätter inte granskning av
-resultatet. Planerade uppgifter startar aldrig automatiskt.
-
-Terminalvyn avslutas när terminalanslutningen bryts (PTY hangup) eller den får
-SIGHUP/SIGTERM. Renderingsloopen begränsas även vid omedelbara tangentläsningsfel
-så att en frånkopplad vy inte kan rusa på CPU. Aktiv inmatning kan uppdatera
-vyn upp till 60 gånger per sekund; tomgång och läsfel begränsas till 10.
-Inmatningsskurar behandlas i högst 2 ms före nästa omritning.
-
-En separat dashboardprocess behåller anslutningen när terminalvyn stängs. På
-macOS används `caffeinate -i` medan observerade agenter arbetar eller väntar.
-Skärmsläckare och skärmlås tillåts. Utloggning, avstängning och stängt laptoplock
-omfattas inte; dashboarden är inte installerad som en tjänst som startar vid boot.
-
-Tillstånd sparas i `~/.codex-dashboard/state.json`, logg i `service.log`, och IPC
-använder en lokal Unix-socket. Dessa filer ligger utanför projekten agenterna
-arbetar i. `CODEX_DASHBOARD_HOME` eller `--state-dir` väljer en annan plats.
-Codex behåller den fullständiga chatthistoriken; dashboarden cachar de senaste
-250 visningsposterna per chatt och begränsar varje post till 30 000 tecken.
-Terminalutmatning visas bara när du väljer verktygsfliken.
-
-Godkännanden beviljas aldrig automatiskt. Klicka på Waiting-raden eller använd
-`/request` / `/requests` för att öppna förfrågan. Ett vanligt chattmeddelande är
-inte ett godkännandesvar. Förfrågevyn stöder kommandon,
-filändringar, behörigheter och textfrågor. Andra typer visas med sina uppgifter
-och kan besvaras med `respond` nedan. En fråga som ägs av en annan klient kan
-behöva besvaras i den klienten. Inga globala Codex-säkerhetsinställningar ändras.
-
-## CLI och felsökning
+Once the first GitHub release is published, add this repository as a Homebrew source
+**once**, then install:
 
 ```sh
-codex dashboard doctor
-codex dashboard status
-codex dashboard demo
-codex dashboard plan --repo /path/to/project --title "Fix tests" "Investigate and fix the failing tests"
-codex dashboard start TASK_ID
-codex dashboard send THREAD_ID "Check the edge cases too"
-codex dashboard respond REQUEST_ID '{"decision":"decline"}'
+brew tap micke232/tyrell-agent-management https://github.com/micke232/tyrell-agent-management.git
+brew install tyrell
 ```
 
-`doctor` kontrollerar bara anslutning, modellista och chattlista. `status` visar
-metadata som JSON, utan meddelandehistorik. `demo` visar exempeldata och kör inga
-agenter. Om Codex-tjänsten saknas, starta Codex som vanligt och öppna dashboarden
-igen. Dashboarden stoppar eller startar aldrig om den gemensamma Codex-tjänsten.
-
-Dashboardprocessen kan stoppas med `kill -TERM` och dess PID från `status`.
-Avbryt först egna pågående uppgifter om du avser att avsluta dem; att stoppa
-dashboardprocessen är inte ett kommando för att stoppa agenter.
-
-För att avinstallera shell-integrationen: ta bort raden som läser in
-`~/.codex-dashboard/shell.zsh` ur `.zshrc`, kör `unfunction codex`, och ta bort
-`~/.local/bin/codex-dashboard`. Bevara tillstånd och worktrees tills allt arbete
-är omhändertaget.
-
-## Verifiering och implementation
+The repository contains both the app and its Homebrew formula. After the initial
+`tap`, the installation and upgrade commands do not need a GitHub username:
 
 ```sh
-python3 -B -m unittest discover -s tests -v
-python3 -B scripts/check_live.py
-python3 -B scripts/check_e2e.py
-python3 -B scripts/check_ui.py
+brew upgrade tyrell
 ```
 
-Enhetstesterna använder en simulerad app-server samt riktiga Git-worktrees,
-separata processer och lokal IPC. `check_live.py` läser den sparade ursprungschatten.
-`check_e2e.py` är ett uttryckligt live-test: det skapar ett temporärt Git-projekt,
-en worktree och en kort Codex-tur, verifierar svaret medan klienten är frånkopplad,
-och avslutar sin egen dashboardprocess. Det använder modellkapacitet och behåller
-testartefakterna på den utskrivna temporära sökvägen.
+Homebrew installs the required Python and Git dependencies. Ghostty is optional
+and is only installed if you choose it during terminal setup. For installation
+without Homebrew, use a release wheel as described in the [installation guide](docs/install.md).
+The Homebrew URL will not resolve until the corresponding release is published.
 
-`check_ui.py` provar den riktiga terminalvyn med exempeldata i en PTY, inklusive
-skrollning, flikbyte, färger och stängning. Det startar inga agenter.
+### 2. Connect a provider
 
-Gränssnittet är byggt med Python curses och tjänsten med asyncio. Den installerade
-Codex-proxyn vidarebefordrar råa bytes till en Unix-socket, så anslutningen använder
-WebSocket-handshake och maskerade klientramar. Protokollscheman från den lokala
-CLI-versionen ligger i `schema/`. Se även [officiell OpenAI-dokumentation om
-App Server](https://learn.chatgpt.com/docs/app-server).
+Install and sign in to **Codex CLI**, **GitHub Copilot CLI**, or both using their
+[official installation instructions](docs/install.md#codex).
+These are separate from installing Tyrell and require an account with access.
 
-### Ändrade filer och fliknavigering
+```sh
+tyrell setup
+tyrell login codex
+# Or:
+tyrell login copilot
+```
 
-**Files** visar agentens rapporterade filändringar i ett utfällbart filträd. Klicka
-på en fil för att se dess senaste rapporterade patch med gröna tillägg och röda
-borttagningar. Diffen är valbar och är inte en sammanlagd Git-diff. Ändringar som
-bara görs via shellkommandon och inte rapporteras som filhändelser kan saknas.
-Pending, Failed och Declined skiljs från genomförda ändringar.
+For Copilot on your organization's GitHub Enterprise host:
 
-**F2** eller ett klick på en flik fokuserar flikraden. **←/→** växlar mellan
-flikarna, **↓/Enter** går in i innehållet och **Esc** återgår till Chat och Prompt.
-I filträdet väljer **↑/↓** en rad, **←/→** stänger/öppnar mappar och **Enter**
-öppnar filens patch. Klicka på **Back to file tree** eller tryck **←** för att
-återgå till trädet. Utkastet i Prompt bevaras.
+```sh
+tyrell login copilot --host https://company.ghe.com
+```
 
-AGENTS.md och agent.md i vald mapp tas med i repository guidance vid import.
-Agenten instrueras att läsa filerna samt tillämpliga instruktioner ovanför och
-under arbetsmappen. Setup och förhandsvisningen visar en röd **Instruction conflicts**
-rubrik när importerade explicita regler avviker från valen (pakethanterare,
-testkörning, lint, typkontroll eller testskapande). Det är en begränsad kontroll
-av explicita svenska och engelska regelmönster, inte en fullständig semantisk analys.
-AGENTS.md i överordnade mappar tas också med. Motsatta regler mellan källor
-flaggas med en uppmaning att granska räckvidd och prioritet; kodblock och
-villkorade regler räknas inte som ovillkorliga krav. Uppdatera
-mappimporten efter ändringar i AGENTS.md. Agenten ska alltid läsa aktuell fil.
+Open **F10 Settings** to see connections, provider setup, terminal settings,
+interface colors and the option to keep your Mac awake while agents are active.
+Provider login is separate from signing in to `gh` for GitHub repository operations.
 
-Cmd+Enter använder Codex turn/steer när agenten arbetar. Meddelandet kompletteras
-med en instruktion att läsa styrningen vid nästa säkra avstämning, behålla
-ofärdigt arbete och uppdatera planen. En redan körande verktygsoperation stoppas
-inte. Vanlig Enter fungerar som tidigare. Ghostty använder bindningen
-`keybind = super+enter=text:\x1b[13;9u`, som ersätter dess standardgenväg för
-helskärm även utanför dashboarden. Ladda om med Cmd+Shift+, efter ändringen.
+### 3. Create your first agent
 
-## Processes och agentportar
+```sh
+tyrell
+```
 
-**Processes** (F2 eller `/processes`) visar processnamn, PID och TCP-portar som
-lyssnar. Processer i en agents worktree märks **Workspace match** och visar agent
-samt arbetsmapp. Det bevisar inte vem som startade processen. Övriga lyssnare
-visas som **Unassigned**. Listan läses med lsof för den lokala användaren, utan
-kommandoradsargument eller miljövariabler, och uppdateras ungefär var femte sekund
-medan fliken används. Ingen process stoppas från denna vy.
+The startup display waits for a key before opening the dashboard.
 
-Agenten får separata dev- och testportar i intervallet **42000–42999** när nästa
-meddelande skickas. Upptagna portar, konfigurerade utvecklarportar och andra
-agenters tilldelningar undviks. Portarna visas i Processes och Setup → Runtime &
-ports. **Developer default port** förblir projektets vanliga utvecklarport.
-Agenten instrueras att skriva över paketets standardport via dess stödda flagga
-eller miljövariabel när en egen server får startas. Tilldelning är inte en
-socketreservation: porten måste kontrolleras igen precis före start. Agenten får
-inte stoppa en annan process eller falla tillbaka till utvecklarens port.
-Inställningen **Development servers** avgör fortfarande om egen server får startas.
+1. Press **F3** and choose an agent name and provider/model.
+2. Open **Setup → This agent / task → Choose folder…**.
+3. Browse to a project folder and choose **OK · Use this folder**.
+4. Review the imported commands, project instructions and access settings.
+5. For a Git repository, keep **Isolated worktree** enabled and choose a **Base branch**.
+6. Return to **Chat**, describe the task in **Prompt**, and press Enter.
+
+Creating an agent or choosing a folder does not start work. The first message
+starts the task. You can also create an agent without a repository for a general
+conversation, then choose a project later while the agent is ready.
+
+Try `tyrell demo` to explore the interface without a connected provider.
+
+## Worktree workflow
+
+### What is a worktree?
+
+A Git worktree is another working directory attached to the **same local Git
+repository**. It shares Git history and branch references, but has its own checked-out
+files. Your editor can stay in your normal project folder while agents edit files
+in their own directories.
+
+```mermaid
+flowchart TD
+    repo["One local Git repository"] --> normal["Your normal checkout<br/>Your editor · your current branch"]
+    repo --> a["Agent A · worktree<br/>Feature from main"]
+    repo --> b["Agent B · worktree<br/>Bug fix from release branch"]
+    repo --> c["Agent C · worktree<br/>Infrastructure task from main"]
+    a --> review["Review files and checks"]
+    review --> branch["Prepare a local review branch"]
+    branch --> you["You check out, test and choose what to publish"]
+    classDef system fill:#0b1411,stroke:#50745b,color:#b4ffc5;
+    classDef human fill:#1d1911,stroke:#9c8050,color:#e0c38a;
+    class repo,a,b,c,review,branch system;
+    class normal,you human;
+```
+
+### Start two tasks in the same project
+
+For example, create **Checkout UI** and **Infra cleanup** using F3. Choose the
+same repository for both agents, but give each its own task and Setup preferences.
+Select `main` for one and another existing branch for the other if needed.
+
+With **Setup → Git worktree → Isolated worktree** enabled:
+
+- The **first message** creates that agent's worktree from the selected committed
+  base. The base list puts `main` first; an empty base means the repository's current HEAD.
+- Later messages reuse the same worktree and conversation.
+- Worktrees created through this flow initially use **detached HEAD**. That means
+  there is a checked-out commit, but no final branch name to choose yet.
+- Your normal checkout keeps its branch and uncommitted changes. Those uncommitted
+  changes are **not copied** into a newly created worktree.
+- Each agent retains its own base commit, working folder, plan and settings.
+
+There is no Jira-number requirement for a temporary worktree. Choose a final branch
+name when the result is ready. Once an agent has a worktree, create another agent
+if you need a different project or base; existing work is preserved.
+
+**Isolation here means separate working files, not a security sandbox.** Git
+history and branch references are shared. Choose appropriate access settings and
+review what the agent is allowed to run. Dependencies, local `.env` files and dev
+servers are not automatically cloned from your usual checkout.
+
+### Check what the agent changed
+
+The header shows the working folder and branch/worktree context. Use:
+
+- **Plan** for completed and remaining steps.
+- **Files** for the changed-file tree and diffs. In an isolated worktree, changes
+  are compared with its starting commit, so committed task changes remain visible.
+- **Tools** for commands and their output.
+- **Processes** for local processes and ports associated with workspaces.
+
+Opening another folder in **Files** changes only the browser's root, not the
+agent's working folder. Use **Use agent workspace** to return to the agent's files.
+
+### Turn the result into a branch you can review
+
+When the agent is ready:
+
+1. Review the result and any remaining checks.
+2. In **Setup → Git worktree**, set **Local review branch**, for example
+   `feature/checkout-accessibility`.
+3. Choose **Prepare local branch…**.
+4. Wait for the agent to report the actual branch, commit and checks performed.
+
+This sends an instruction to the agent to review and commit its intended changes
+in the worktree, create the requested local branch, and leave the worktree detached
+so the branch can be checked out elsewhere. It is an agent task, not an immediate
+Git operation completed by the button. Existing branches are not overwritten.
+
+Back in your normal repository, with your own local work safely committed or stashed:
+
+```sh
+git switch feature/checkout-accessibility
+git diff main...HEAD
+# Run your normal local checks and review the result.
+```
+
+The branch already belongs to the shared repository; there is no folder-copy step.
+Push it and open a pull request when you are satisfied. Tyrell's preparation step
+does **not** push, open a PR or merge automatically.
+
+### Worktree lifecycle
+
+Closing the dashboard, hiding an agent or archiving a conversation does not delete
+its worktree. Your work remains on disk. Worktrees are stored under the selected
+Tyrell data directory, normally `~/.tyrell/worktrees/` for new installations.
+
+Use `git worktree list` in the original repository to inspect them. Only remove a
+worktree after its agent has stopped and you have preserved the work you want.
+Folders without Git can still be used, but they do not get Git worktree isolation.
+
+## Configure how an agent works
+
+**Setup belongs to the agent or project. F10 Settings belongs to the application.**
+
+Setup can save preferences for one agent, a project profile or shared defaults.
+Importing a folder detects Git, `package.json` scripts and project conventions
+without running scripts or installing dependencies.
+
+| Setup area | Typical choices |
+| --- | --- |
+| Model and response | Provider/model, supported reasoning preferences, response length and task context. |
+| Project context | Working folder, package scripts, documentation links and applicable agent instructions. |
+| Quality checks | Lint and type checking; whether to run or create tests, including end-to-end checks. |
+| Runtime and ports | Whether the agent may start a dev server and which commands and ports to use. |
+| Infrastructure | Terraform-related formatting, validation and optional planning preferences. |
+| Access | Provider-specific file, network and approval settings. |
+| Git worktree | Isolation, base branch and preparation of a local review branch. |
+
+Tyrell imports applicable `AGENTS.md` guidance, including parent directories and
+`AGENTS.override.md` precedence within a directory. Recognized conflicts with Setup
+are highlighted in the instruction preview. This is a limited rule check; the
+agent must still read and follow current project instructions.
+
+For independent development servers, agents receive ports in **42000–42999**,
+avoiding configured developer ports and detected listeners. Allocation does not
+reserve a socket: the agent must recheck before starting a server. A **Workspace
+match** in Processes identifies the folder, not proof of which agent launched it.
+
+### Permissions and waiting
+
+For Codex, Setup offers read-only, workspace and full-access configurations plus
+approval policy. **Autonomous / full access** selects full access and no routine
+approval prompts. Copilot has its own **Ask** and **Autonomous** controls and remains
+subject to the provider and organization's policy.
+
+Access changes take effect on the next new turn. They do not alter a tool already
+running or automatically answer a pending request. Open **Waiting** or `/requests`
+to inspect a question or approval. `/interrupt` stops the selected agent's current turn.
+
+## Keep work moving
+
+Write a follow-up message to steer an active agent or add context. The agent is
+instructed to update its plan and retain unfinished tasks. Plans appear in **Plan**,
+not as repeated checklists in Chat. Progress and estimated time depend on what the
+provider reports; Tyrell does not invent completion percentages.
+
+For a provider handoff, use **F6**. The source agent must be ready. Tyrell prepares a
+new agent with a recent conversation summary, plan and an isolated worktree with
+transferable changes. Ignored dependencies and known credential files are excluded;
+omissions are reported. The new agent starts when you send it a message.
+
+Closing the view leaves the background service running. Reopen `tyrell` to reconnect.
+This is local persistence, not an always-on cloud service: sleep, logout or shutdown
+can interrupt work. **Keep Mac awake** prevents idle system sleep while agents are
+active or waiting; the display may still turn off. `tyrell stop` stops the service
+when all agents are idle.
+
+## Controls
+
+| Key | Action |
+| --- | --- |
+| **Tab** | Move focus between agents, history and Prompt. |
+| **F1** | Help. |
+| **F2** | Tabs; use Left/Right while the tab strip is focused. |
+| **F3** | Create an agent. |
+| **F4** | Browse archived agents. |
+| **F5** | Rename the selected agent. |
+| **F6** | Hand work to a new agent. |
+| **F10** | Application settings and connections. |
+| **Esc** | Close an overlay or return to Chat. |
+| **Enter** | Send the prompt. |
+| **Shift+Enter / Alt+Enter** | New line, depending on terminal support. |
+| **Ctrl+Q** | Close the view; background work continues. |
+
+Click agents and tabs, scroll history with the mouse, and drag over chat text to
+select it. Clipboard behavior depends on the terminal; see the [clipboard guide](docs/install.md#apple-terminal-clipboard).
+On macOS, function keys may require **Fn**. The UI is English; conversations can use
+any language. Agent dots are **blue: Working**, **green: Ready**, **yellow: Waiting**.
+
+## Your data and provider connections
+
+New installations store local settings and workspace metadata in `~/.tyrell`.
+Existing installations with `~/.codex-dashboard` keep using that directory so
+history, settings and worktree paths remain valid. `TYRELL_HOME` or `--state-dir`
+selects a custom location; the older environment variable remains supported.
+Provider CLIs manage their own authentication and session storage.
+
+Tyrell is independent of any particular company, account or project. Installing it
+does not provide someone else's credentials, provider subscription or repository
+access. Share the release package, not your personal data directory.
+
+## Develop and release
+
+The implementation lives in [`tyrell/`](tyrell/). It uses Python's standard library
+at runtime. Build tools are installed separately:
+
+```sh
+git clone https://github.com/micke232/tyrell-agent-management.git
+cd tyrell-agent-management
+python3.14 -m venv .venv
+.venv/bin/python -m pip install -r packaging/build-requirements.txt
+.venv/bin/python -m tyrell demo
+.venv/bin/python -B -m unittest discover -s tests
+```
+
+Use feature branches and pull requests into `main`. Before committing changes to
+packaged code or the installation guide, regenerate the formula:
+
+```sh
+.venv/bin/python scripts/prepare_release.py
+```
+
+One GitHub Actions workflow runs tests, verifies the formula checksum, installs the
+wheel in a clean environment and exercises the Homebrew installer. Version tags
+from `main` create tested **release drafts**. Publishing the release activates the
+formula already included in that PR; no second formula PR is necessary.
+See [the release guide](docs/homebrew.md) for the full sequence.
+
+For further details: [installation and troubleshooting](docs/install.md),
+[agent Setup](docs/agent-setup.md), and [the detailed interface reference, in Swedish](docs/reference.md).

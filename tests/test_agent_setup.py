@@ -7,11 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from codex_dashboard.agent_setup import (DEFAULTS, FIELDS, discover_project, effective_config,
+from tyrell.agent_setup import (DEFAULTS, FIELDS, discover_project, effective_config,
                                          instruction_text, validate_patch)
-from codex_dashboard.service import Service
-from codex_dashboard.state import State
-from codex_dashboard.ui import Dashboard
+from tyrell.service import Service
+from tyrell.state import State
+from tyrell.ui import Dashboard
 from test_presentation import Screen
 
 

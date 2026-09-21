@@ -6,9 +6,9 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from codex_dashboard import cli
-from codex_dashboard.ui import Dashboard
-from codex_dashboard.presentation import PALETTE
+from tyrell import cli
+from tyrell.ui import Dashboard
+from tyrell.presentation import PALETTE
 
 root = Path(sys.argv[1])
 

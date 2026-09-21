@@ -1,8 +1,8 @@
 import unittest
 
-from codex_dashboard.ui import Dashboard
-from codex_dashboard.presentation import timeline
-from codex_dashboard.ui import crop, wrap
+from tyrell.ui import Dashboard
+from tyrell.presentation import timeline
+from tyrell.ui import crop, wrap
 
 
 class DeliveryTests(unittest.TestCase):

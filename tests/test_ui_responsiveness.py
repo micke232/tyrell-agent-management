@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.presentation import TimelineCache, timeline
-from codex_dashboard.ui import crop, wrap
+from tyrell.presentation import TimelineCache, timeline
+from tyrell.ui import crop, wrap
 from test_native_clipboard import fixture
 
 
@@ -18,7 +18,7 @@ class ResponsivenessTests(unittest.TestCase):
         styles = []
         for now in (0.1, 0.9):
             screen = Screen()
-            with patch('codex_dashboard.ui.time.monotonic', return_value=now), patch('codex_dashboard.ui.curses.curs_set') as cursor:
+            with patch('tyrell.ui.time.monotonic', return_value=now), patch('tyrell.ui.curses.curs_set') as cursor:
                 ui.render(screen)
                 cursor.assert_called_with(1 if now == 0.1 else 0)
             styles.append(next(style for y, _, text, style in screen.draws if y == ui.draft_top-1 and text.startswith('╭')))
@@ -29,6 +29,18 @@ class ResponsivenessTests(unittest.TestCase):
         self.assertIsNone(ui.cursor_blink_phase(0.9))
         ui.focus, ui.panel = 'chat', 'HUB SETTINGS'
         self.assertIsNone(ui.cursor_blink_phase(0.9))
+
+    def test_cursor_stays_visible_during_typing_then_resumes_blinking(self):
+        ui, _ = fixture()
+        ui.focus = 'chat'
+        for now in (1.0, 1.4, 1.8, 2.2):
+            with patch('tyrell.ui.time.monotonic', return_value=now):
+                ui.key('a')
+            self.assertEqual(ui.cursor_blink_phase(now + .4), 0)
+        self.assertEqual(ui.cursor_blink_phase(3.1), 1)
+        with patch('tyrell.ui.time.monotonic', return_value=3.2):
+            ui.key('b')
+        self.assertEqual(ui.cursor_blink_phase(3.3), 0)
 
     def test_already_queued_snapshot_for_previous_agent_is_discarded(self):
         ui, _ = fixture()
@@ -50,7 +62,7 @@ class ResponsivenessTests(unittest.TestCase):
 
     def test_width_fast_paths_preserve_unicode_and_control_sanitization(self):
         import unicodedata
-        from codex_dashboard.ui import clean, cells, cell_width
+        from tyrell.ui import clean, cells, cell_width
         samples = ['', 'plain ASCII', 'åäö', '猫🙂', 'e\u0301', '\x1b[31mred\x1b[0m\ttext', '\u0301']
         for text in samples:
             cleaned = clean(text)
@@ -73,7 +85,7 @@ class ResponsivenessTests(unittest.TestCase):
         baseline = cache.render(items, 80, 'chat', wrap, crop, 'a')
         self.assertEqual(baseline, timeline(items, 80, 'chat', wrap, crop))
         items[-1]['text'] += ' new token'
-        with patch('codex_dashboard.presentation.timeline', wraps=timeline) as format_rows:
+        with patch('tyrell.presentation.timeline', wraps=timeline) as format_rows:
             actual = cache.render(items, 80, 'chat', wrap, crop, 'a')
             format_rows.assert_called_once()
         self.assertEqual(actual, timeline(items, 80, 'chat', wrap, crop))
@@ -101,7 +113,7 @@ class ResponsivenessTests(unittest.TestCase):
                 ui.stopped.set()
                 ui.refresh_requested.set()
             return {'threads': {}, 'marker': len(calls)}
-        with patch('codex_dashboard.ui.request', side_effect=request):
+        with patch('tyrell.ui.request', side_effect=request):
             ui.polling()
         self.assertEqual(calls, ['fixture', 'other'])
         self.assertEqual(ui.updates.get_nowait(), ('snapshot_for', ('thread:other', {'threads': {}, 'marker': 2})))
@@ -117,7 +129,7 @@ class ResponsivenessTests(unittest.TestCase):
         def request(*args, **kwargs):
             ui.stopped.set()
             return {}
-        with patch('codex_dashboard.ui.request', side_effect=request):
+        with patch('tyrell.ui.request', side_effect=request):
             ui.worker()
         self.assertTrue(ui.refresh_requested.is_set())
 

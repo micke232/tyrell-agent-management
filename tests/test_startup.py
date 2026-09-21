@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.cli import prepare_dashboard
-from codex_dashboard.startup import Startup, provider_status
+from tyrell.cli import prepare_dashboard
+from tyrell.startup import Startup, provider_status
 
 
 class StartupTests(unittest.TestCase):
@@ -31,8 +31,8 @@ class StartupTests(unittest.TestCase):
             snapshot = {'threads': {}, 'tasks': [], 'providers': {'codex': {'connected': connected}}}
             output = io.StringIO()
             with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(output), \
-                    patch('codex_dashboard.cli.ensure_service') as ensure, \
-                    patch('codex_dashboard.cli.request', return_value=snapshot) as request, \
+                    patch('tyrell.cli.ensure_service') as ensure, \
+                    patch('tyrell.cli.request', return_value=snapshot) as request, \
                     patch('time.sleep', side_effect=AssertionError('Artificial delay')):
                 ui = prepare_dashboard(directory, 'fixture', False)
             ensure.assert_called_once_with(directory, 'fixture')

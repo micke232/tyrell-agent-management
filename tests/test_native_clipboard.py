@@ -3,8 +3,8 @@ import curses
 import unittest
 from unittest.mock import patch
 
-from codex_dashboard.clipboard import selection_text
-from codex_dashboard.ui import Dashboard
+from tyrell.clipboard import selection_text
+from tyrell.ui import Dashboard
 
 
 class Screen:
@@ -51,7 +51,7 @@ def point(ui, prefix, column=0):
 class NativeClipboardTests(unittest.TestCase):
     def test_drag_highlights_and_copy_copies_only_selected_text_for_mouse_protocols(self):
         for protocol in ("sgr", "x10", "rxvt"):
-            with self.subTest(protocol=protocol), patch("codex_dashboard.ui.copy_text") as copy:
+            with self.subTest(protocol=protocol), patch("tyrell.ui.copy_text") as copy:
                 ui, _ = fixture()
                 screen = Screen()
                 ui.render(screen)
@@ -93,7 +93,7 @@ class NativeClipboardTests(unittest.TestCase):
         screen = Screen()
         ui.render(screen)
         self.assertTrue(any("NEW STREAMED REPLY" in text for _, _, text, _ in screen.draws))
-        with patch("codex_dashboard.ui.copy_text") as copy:
+        with patch("tyrell.ui.copy_text") as copy:
             left, _, y = ui.hit_copy
             report(ui, 0, left, y)
             copy.assert_called_once_with("Alpha")
@@ -113,14 +113,14 @@ class NativeClipboardTests(unittest.TestCase):
         ui.render(screen)
         self.assertIsNone(ui.selection_anchor)
         self.assertTrue(any("NEW STREAMED REPLY" in text for _, _, text, _ in screen.draws))
-        with patch("codex_dashboard.ui.copy_text") as copy:
+        with patch("tyrell.ui.copy_text") as copy:
             ui.copy_selection()
             copy.assert_not_called()
 
     def test_copy_without_selection_does_nothing_and_text_view_is_separate(self):
         ui, _ = fixture()
         ui.render(Screen())
-        with patch("codex_dashboard.ui.copy_text") as copy:
+        with patch("tyrell.ui.copy_text") as copy:
             left, _, y = ui.hit_copy
             report(ui, 0, left, y)
             copy.assert_not_called()

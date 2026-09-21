@@ -6,8 +6,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from codex_dashboard.ui import Dashboard
-from codex_dashboard.clipboard import selection_text
+from tyrell.ui import Dashboard
+from tyrell.clipboard import selection_text
 
 out = Path(sys.argv[1])
 thread = {"id": "clipboard-fixture", "name": "Clipboard verification", "status": {"type": "idle"},
@@ -33,7 +33,7 @@ class Fixture(Dashboard):
             first, last = sorted((self.selection_anchor, self.selection_end))
             for y, row in self.history_cells.items():
                 if row["index"] == first[0] and first != last:
-                    from codex_dashboard.ui import cells
+                    from tyrell.ui import cells
                     x = row["x"] + cells(row["text"][:first[1]])
                     highlighted = (screen.inch(y, x) & curses.A_ATTRIBUTES) == (self.styles["selected"] & curses.A_ATTRIBUTES)
         state = {"highlighted": highlighted, "pid": os.getpid(), "terminal": os.environ.get("TERM_PROGRAM"), "points": points,

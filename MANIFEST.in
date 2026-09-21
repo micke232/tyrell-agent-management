@@ -1,5 +1,5 @@
 include pyproject.toml setup.cfg setup.py
-recursive-include codex_dashboard *.py *.json
+recursive-include tyrell *.py *.json
 prune tests
 prune schema
 prune scripts
