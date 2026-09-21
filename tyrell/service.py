@@ -63,6 +63,7 @@ class Service:
         self.opencode = OpenCodeRuntime(self.state, self.directory, self.on_request)
         self.process_inventory = {}
         self.installation = {}
+        self.background_errors = {}
         self.workspace_git = {}
         self.workspace_requested = None
         self.files_requested = None
@@ -281,6 +282,8 @@ class Service:
 
     async def connection_loop(self):
         while not self.stop.is_set():
+            if self.private_codex:
+                self.codex_env, self.codex_home = codex_environment(self.directory)
             self.rpc = Rpc(self.command, self.codex_event, self.on_request, env=self.codex_env)
             try:
                 await self.rpc.connect()
@@ -459,7 +462,7 @@ class Service:
                                                  "changedFiles": t.get("changedFiles", {}) if tid == req.get("threadId") else {}}
                                             for tid, t in snapshot[collection].items()}
             return {**snapshot, "apiVersion": 9, "appVersion": __version__, "installation": self.installation, "workspaceGit": self.workspace_git, "filesBrowser": self.files_browser if req.get("view") == "files" else None, "pid": os.getpid(), "providers": self.providers(), "processInventory": self.process_inventory,
-                    "preventingSleep": bool(self.caffeine and self.caffeine.returncode is None), "sleepError": self.sleep_error}
+                    "preventingSleep": bool(self.caffeine and self.caffeine.returncode is None), "sleepError": self.sleep_error, "backgroundErrors": dict(self.background_errors)}
         if action == "files_open":
             root = Path(req["path"]).expanduser().resolve(strict=True)
             if not root.is_dir():
@@ -986,6 +989,29 @@ class Service:
             with contextlib.suppress(ConnectionError):
                 await writer.wait_closed()
 
+    async def supervise(self, name, factory, once=False):
+        """Restart infrastructure loops, never replay user commands or agent turns."""
+        while not self.stop.is_set():
+            try:
+                await factory()
+                if once or self.stop.is_set():
+                    return
+                raise RuntimeError("Background task exited unexpectedly")
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                # Exception messages can contain provider credentials; expose only the type.
+                message = type(error).__name__ + "; retrying automatically"
+                self.background_errors[name] = message
+                print(name + ": " + message, file=sys.stderr, flush=True)
+                if name == "Codex connection":
+                    self.state.connected = False
+                    self.state.error = "Codex connection stopped; retrying automatically"
+            try:
+                await asyncio.wait_for(self.stop.wait(), 3)
+            except asyncio.TimeoutError:
+                pass
+
     async def run(self):
         self.stop = asyncio.Event()
         os.umask(0o077)
@@ -1011,11 +1037,18 @@ class Service:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stop.set)
-        jobs = [asyncio.create_task(self.check_installation()), asyncio.create_task(self.connection_loop()), asyncio.create_task(self.maintain()),
-                asyncio.create_task(self.monitor_processes()), asyncio.create_task(self.monitor_workspace()), asyncio.create_task(self.monitor_files()),
-                asyncio.create_task(self.opencode.run(self.stop)),
-                asyncio.create_task(self.copilot.run(self.stop, self.directory,
-                                    lambda: self.state.data["settings"].get("copilotHost")))]
+        loops = {
+            "Codex connection": self.connection_loop,
+            "State maintenance": self.maintain,
+            "Processes": self.monitor_processes,
+            "Workspace": self.monitor_workspace,
+            "Files": self.monitor_files,
+            "OpenCode connection": lambda: self.opencode.run(self.stop),
+            "Copilot connection": lambda: self.copilot.run(self.stop, self.directory,
+                lambda: self.state.data["settings"].get("copilotHost")),
+        }
+        jobs = [asyncio.create_task(self.supervise("CLI detection", self.check_installation, once=True))]
+        jobs.extend(asyncio.create_task(self.supervise(name, factory)) for name, factory in loops.items())
         try:
             await self.stop.wait()
         finally:

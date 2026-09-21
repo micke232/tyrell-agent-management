@@ -90,6 +90,11 @@ def settings_text(data, directory):
         if key == 'codex' and info.get('sessionStorage') == 'migrationPending':
             lines.append('  Session isolation pending: existing agents can finish; new Codex agents wait for migration.')
         lines.append('')
+    if data.get('backgroundErrors'):
+        lines += ['## Background recovery']
+        lines += ['  ' + name + ': last failure: ' + error.replace('; retrying automatically', '')
+                  for name, error in data['backgroundErrors'].items()]
+        lines += ['  Failed background tasks restart automatically.', '']
     lines += ['', 'One connected provider is enough. CLI installation and account access are separate.',
               '`[1]` Codex installation & sign-in', '`[2]` Copilot installation & sign-in', '`[3]` OpenCode installation & model access',
               '`[D]` Check installed CLIs and compatibility', '', '## GitHub account',
