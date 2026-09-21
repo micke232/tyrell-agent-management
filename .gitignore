@@ -1,0 +1,12 @@
+__pycache__/
+.runtime/
+.test-runtime/
+*.pyc
+dist/
+build/
+*.egg-info/
+
+.DS_Store
+.venv/
+.env
+.env.*

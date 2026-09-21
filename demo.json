@@ -1,0 +1,24 @@
+{
+  "connected": true,
+  "preventingSleep": true,
+  "threads": {
+    "demo-active": {
+      "id": "demo-active", "name": "Refactor authentication", "cwd": "~/.codex-dashboard/worktrees/web-app/task-1",
+      "model": "example-model", "reasoningEffort": "high", "status": {"type": "active", "activeFlags": []},
+      "activity": "Running authentication tests", "plan": [
+        {"step": "Inspect the current authentication flow", "status": "completed"},
+        {"step": "Replace session middleware", "status": "inProgress"},
+        {"step": "Verify session expiry and logout", "status": "pending"}
+      ],
+      "items": [
+        {"id": "m1", "type": "userMessage", "text": "Refactor authentication without changing the public API."},
+        {"id": "m2", "type": "agentMessage", "text": "The new middleware is in place. I am checking session expiry and logout before reviewing the final diff."},
+        {"id": "m3", "type": "commandExecution", "text": "$ npm test -- auth\n12 passed · checking remaining cases…"}
+      ]
+    },
+    "demo-waiting": {"id": "demo-waiting", "name": "Update dependencies", "status": {"type": "active", "activeFlags": ["waitingOnApproval"]}, "activity": "Waiting for network approval", "items": []},
+    "demo-idle": {"id": "demo-idle", "name": "Fix mobile navigation", "status": {"type": "idle"}, "activity": "Completed · tests passed", "items": []}
+  },
+  "tasks": [{"id": "task-next", "title": "Add search filters", "repo": "~/projects/web-app", "prompt": "Add filters to search results.", "status": "planned"}],
+  "requests": [], "models": [], "settings": {}
+}
