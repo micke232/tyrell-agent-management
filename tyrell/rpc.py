@@ -30,7 +30,16 @@ class Rpc:
         self.stderr_task = asyncio.create_task(self.read_stderr())
         if "proxy" in self.command:
             self.websocket = WebSocket(self.process.stdout, self.process.stdin)
-            await self.websocket.handshake()
+            try:
+                await self.websocket.handshake()
+            except asyncio.IncompleteReadError as error:
+                # EOF during the HTTP upgrade must enter the service retry loop.
+                if self.stderr_task:
+                    try:
+                        await asyncio.wait_for(asyncio.shield(self.stderr_task), .5)
+                    except asyncio.TimeoutError:
+                        pass
+                raise RpcError("Codex proxy disconnected during handshake. " + self.stderr[-500:]) from error
         self.reader_task = asyncio.create_task(self.read())
         await self.call("initialize", {"clientInfo": {"name": "tyrell", "title": "Tyrell Agent Management", "version": "0.1.0"},
                                        "capabilities": {"experimentalApi": True}})

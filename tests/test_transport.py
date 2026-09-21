@@ -3,6 +3,8 @@ import base64
 import hashlib
 import struct
 import unittest
+import sys
+from tyrell.rpc import Rpc, RpcError
 
 from tyrell.websocket import WebSocket
 
@@ -57,3 +59,15 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         reader.feed_data(b'\x81\x7f' + struct.pack("!Q", 1 << 40))
         with self.assertRaisesRegex(ValueError, "limit"):
             await WebSocket(reader, Writer()).read()
+
+
+class ProxyFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_proxy_exit_before_handshake_is_retryable(self):
+        rpc = Rpc([sys.executable, '-c',
+                   'import sys; sys.stderr.write("control socket unavailable\\n")', 'proxy'],
+                  lambda *_: None, lambda *_: None)
+        try:
+            with self.assertRaisesRegex(RpcError, "control socket unavailable"):
+                await asyncio.wait_for(rpc.connect(), 5)
+        finally:
+            await rpc.close()
