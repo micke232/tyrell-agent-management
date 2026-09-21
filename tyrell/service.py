@@ -77,7 +77,11 @@ class Service:
         while tid and tid not in seen:
             seen.add(tid)
             entity = self.state.data["threads"].get(tid) or self.state.data["archived"].get(tid) or {}
-            if entity.get("managed") or tid in task_threads:
+            # Older Hub agents predate the managed flag. A Hub-created worktree
+            # is ownership evidence; merely appearing in the old catalog is not.
+            worktree = entity.get("agentWorktree", {}).get("root")
+            legacy_owned = bool(worktree and (self.directory / "worktrees").resolve() in Path(worktree).resolve().parents)
+            if entity.get("managed") or legacy_owned or tid in task_threads:
                 return True
             tid = entity.get("parentThreadId")
         return False
@@ -267,9 +271,13 @@ class Service:
                     shutil.copyfile(source, temporary)
                     os.chmod(temporary, 0o600)
                     temporary.replace(destination)
+                saved_name = t.get("name")
                 result = await self.rpc.call("thread/resume", {"threadId": tid, "path": str(destination)})
                 if result["thread"]["id"] != tid:
                     raise RpcError("Codex migration returned an unexpected session identifier")
+                if saved_name:
+                    await self.rpc.call("thread/name/set", {"threadId": tid, "name": saved_name})
+                    t["name"] = saved_name
                 if tid in self.state.data["archived"]:
                     await self.rpc.call("thread/archive", {"threadId": tid})
                 # Archive the shared original; do not delete it or any IDE session.

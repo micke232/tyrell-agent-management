@@ -38,6 +38,14 @@ class IsolationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, 'another application'):
             await s.subscribe('ide')
 
+    def test_legacy_hub_worktree_is_owned_without_importing_ide_sessions(self):
+        s = self.service
+        s.state.thread('legacy')['agentWorktree'] = {'root': str(s.directory/'worktrees/repo/agent')}
+        s.state.thread('outside')['agentWorktree'] = {'root': str(self.root/'other-project')}
+        self.assertTrue(s.owns_thread('legacy'))
+        self.assertFalse(s.owns_thread('outside'))
+        self.assertFalse(s.owns_thread('ide'))
+
     def test_only_owned_parents_can_introduce_subagents(self):
         s = self.service
         s.codex_event('thread/started', {'thread': {'id':'own-child','parentThreadId':'owned'}})
@@ -118,6 +126,7 @@ class IsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((s.codex_home/'sessions'/source.name).read_text(), 'saved history')
         self.assertEqual([c.args[0] for c in shared.call.call_args_list], ['thread/read','thread/archive'])
         self.assertEqual(s.state.thread('owned')['codexStorage'], 'private')
+        self.assertIn(('thread/name/set', {'threadId': 'owned', 'name': 'owned'}), [c.args for c in s.rpc.call.call_args_list])
 
     async def test_failed_migration_never_archives_original(self):
         s = self.service
