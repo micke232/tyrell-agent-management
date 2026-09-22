@@ -60,7 +60,7 @@ def settings_text(data, directory):
     values = providers(data)
     settings = data.get('settings', {})
     lines = ['# Tyrell Agent Management · Settings', '', '## Preferences',
-             '`[H]` Edit GitHub host: ' + (values.get('copilot', {}).get('expectedHost') or settings.get('copilotHost') or 'https://github.com'),
+             '`[H]` Edit GitHub host: ' + (values.get('copilot', {}).get('expectedHost') or settings.get('copilotHost') or 'Auto · follow Copilot CLI'),
              '`[M]` [' + ('x' if settings.get('mouseEnabled', True) else ' ') + '] Mouse navigation',
              '`[K]` [' + ('x' if settings.get('keepAwake', True) else ' ') + '] Keep Mac awake while agents work',
              '  Prevents automatic sleep while agents are active, including when waiting for input.',
@@ -87,6 +87,14 @@ def settings_text(data, directory):
                       '  Models: ' + (str(len(info.get('models', []))) + ' available' if connected else 'Available after connection')])
         if installed and installed.get('installed') and installed.get('path'):
             lines.append('  CLI path: ' + installed['path'])
+        if key == 'copilot':
+            expected = info.get('expectedHost') or settings.get('copilotHost')
+            lines.append('  Account selection: ' + (expected or 'Auto · follow Copilot CLI'))
+            if info.get('host'):
+                lines.append('  CLI account host: ' + info['host'])
+            if status == 'account':
+                lines.append('  Signed in, but the CLI account does not match the required host.')
+                lines.append('  Press H and enter auto to use this account, or sign in to the required host.')
         if key == 'codex' and info.get('sessionStorage') == 'migrationPending':
             lines.append('  Session isolation pending: existing agents can finish; new Codex agents wait for migration.')
         lines.append('')
@@ -99,7 +107,7 @@ def settings_text(data, directory):
               '`[1]` Codex installation & sign-in', '`[2]` Copilot installation & sign-in', '`[3]` OpenCode installation & model access',
               '`[D]` Check installed CLIs and compatibility', '', '## GitHub account',
               'Host: ' + (values.get('copilot', {}).get('expectedHost') or values.get('copilot', {}).get('host') or 'https://github.com'),
-              'Use your company hostname for GitHub Enterprise Cloud.',
+              'Press H: enter auto to reuse the CLI account, or a hostname to require that host.',
               'Change the host before signing in; existing Copilot work must be idle.', '', '## App & local data',
               'App version: ' + __version__, 'Background service: ' + str(data.get('appVersion') or 'Older version'),
               'Data folder: ' + str(directory),

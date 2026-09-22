@@ -446,8 +446,10 @@ class Service:
         if action == "copilot_host":
             if any(t.get("provider") == "copilot" and t.get("status", {}).get("type") == "active" for t in self.state.data["threads"].values()):
                 raise ValueError("Wait until Copilot agents are ready before changing GitHub host")
+            value = req.get("host", "")
+            host = None if value is None or value.strip().lower() in ("", "auto") else normalize_host(value.strip())
             await self.copilot_runtime.close()
-            self.state.data["settings"]["copilotHost"] = normalize_host(req["host"])
+            self.state.data["settings"]["copilotHost"] = host
             self.copilot.update("connecting")
             self.state.save()
             return {}

@@ -51,10 +51,14 @@ class CopilotProbe:
         self.process = None
         self.sequence = 0
 
-    async def start(self, executable, cwd):
+    async def start(self, executable, cwd, host=None):
+        env = dict(os.environ)
+        if host:
+            # Scope account routing to this child; never switch the CLI's global account.
+            env["COPILOT_GH_HOST"] = urlparse(normalize_host(host)).hostname
         self.process = await asyncio.create_subprocess_exec(
             executable, "--headless", "--stdio", "--no-auto-update", "--log-level", "none",
-            cwd=cwd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            cwd=cwd, env=env, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL)
 
     async def send(self, message):
@@ -127,7 +131,7 @@ class CopilotConnection:
                 if not executable:
                     self.update("missing")
                 else:
-                    await probe.start(executable, str(directory))
+                    await probe.start(executable, str(directory), host=expected_host())
                     ping = await probe.call("ping")
                     identity = None
                     models = []

@@ -32,7 +32,7 @@ def prepare(repository, output, check=False):
         for path in source.rglob('*'):
             path.chmod(0o755 if path.is_dir() else 0o644)
         subprocess.run([sys.executable, '-m', 'build', '--wheel', '--no-isolation',
-                        '--outdir', directory, str(source)], env=env, check=True)
+                        '--outdir', directory, str(source)], env=env, check=True, umask=0o022)
         wheel, = Path(directory).glob('*.whl')
         archive, generated = build(wheel, repository, output/'homebrew')
         shutil.copy2(wheel, output/wheel.name)
