@@ -1093,8 +1093,9 @@ class Dashboard:
             self.submit("diagnostics")
         elif action == "h":
             self.drafts[self.selected] = self.buffer
-            self.wizard = {"kind": "hub_host", "label": "GitHub host · e.g. https://company.ghe.com"}
-            self.buffer, self.cursor = host, len(host)
+            self.wizard = {"kind": "hub_host", "label": "GitHub host · auto follows CLI account; or enter company.ghe.com"}
+            choice = self.data.get("providers", {}).get("copilot", {}).get("expectedHost") or "auto"
+            self.buffer, self.cursor = choice, len(choice)
             self.panel, self.focus = None, "chat"
 
     def begin_handoff(self):
@@ -1169,7 +1170,7 @@ class Dashboard:
         text = self.buffer.strip()
         if self.wizard and self.wizard["kind"] == "hub_host":
             try:
-                host = normalize_host(text)
+                host = None if text.lower() in ("", "auto") else normalize_host(text)
             except ValueError as error:
                 self.notice = str(error)
                 return

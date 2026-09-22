@@ -38,7 +38,7 @@ class CopilotRuntime(CopilotProbe, ProviderRuntime):
             executable = copilot_executable()
             if not executable:
                 raise RpcError("Copilot CLI is not installed")
-            await self.start(executable, str(self.directory))
+            await self.start(executable, str(self.directory), host=self.expected_host())
             self.reader_task = asyncio.create_task(self.read())
             try:
                 ping = await self.call("ping", {})

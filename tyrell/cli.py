@@ -166,8 +166,9 @@ def main():
                 raise RuntimeError("Install Copilot CLI before signing in")
             ensure_service(directory, args.codex)
             info = request(directory, "connections").get("copilot", {})
-            host = normalize_host(args.host or info.get("expectedHost") or "https://github.com")
-            request(directory, "copilot_host", host=host)
+            host = normalize_host(args.host or info.get("expectedHost") or info.get("host") or "https://github.com")
+            if args.host:
+                request(directory, "copilot_host", host=host)
             # Let Copilot handle browser/terminal auth and its own credential store.
             result = subprocess.call([executable, "login", "--host", host])
             if result:
