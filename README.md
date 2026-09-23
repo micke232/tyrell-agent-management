@@ -90,3 +90,18 @@ Tyrell is currently a preview. **macOS with Ghostty** is the primary tested setu
 Linux is experimental, and terminal support for mouse and clipboard features varies.
 
 [Installation and troubleshooting](docs/install.md) · [Agent setup](docs/agent-setup.md)
+
+### Skills and command discovery
+
+Type `/` in Prompt to browse and filter commands. Use arrow keys to select and
+Tab, Enter or a click to insert a command without sending it.
+
+`/skills` lists skills from the selected provider and workspace. Codex uses its
+app-server catalogue, Copilot uses its CLI catalogue (including plugins), and
+OpenCode uses its native CLI discovery in Tyrell's `--pure` mode.
+Use `/skill NAME TASK` to request one explicitly. Agents can also choose relevant
+skills automatically and are instructed to announce their use.
+
+Files defaults to uncommitted changes. Choose **Include branch commits** to view
+committed branch changes as well. Shared workspaces are identified because a Git
+diff cannot attribute edits to an individual agent.
