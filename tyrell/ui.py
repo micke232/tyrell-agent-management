@@ -18,6 +18,7 @@ from .client import request
 from .clipboard import copy_text, selection_text
 from .appearance import Appearance
 from .composer import DraftLayout
+from .commands import choices as command_choices
 from .progress import conversation_text, estimate_label, plan_only_stop
 from .terminal_input import key_sequences, enhanced_key
 from .state import status_label
@@ -38,6 +39,12 @@ HELP = """# Tyrell Agent Management · Help
 Choose a working folder in `Setup`; Git and package scripts are detected.
 🌀 Codex · 🤖 GitHub Copilot. The coloured dot shows agent status.
 `/connections` Provider connections, models and repository verification.
+
+## Skills and commands
+Type `/` to browse commands. ↑/↓ selects; Tab or Enter inserts without sending.
+`/skills` Lists the selected provider's skills, including project and plugin skills.
+`/skill NAME TASK` Requests a skill explicitly.
+Agents may choose relevant skills automatically and must announce their use.
 
 ## Navigation
 `Tab` Move focus between the sidebar, history and Prompt.
@@ -190,6 +197,10 @@ class Dashboard:
         self.demo = demo is not None
         self.selected = None
         self.focus = "sidebar"
+        self.command_index = 0
+        self.command_query = None
+        self.command_dismissed = None
+        self.command_hits = []
         self.buffer = ""
         self.cursor = 0
         self.last_input_at = None
@@ -273,6 +284,7 @@ class Dashboard:
                 selected = self.selected
                 snapshot = request(self.directory, "snapshot", view=self.view,
                                    filesRoot=self.files.locations.get(selected, {}).get("root") if self.view == "files" else None,
+                                   filesScope=self.files.locations.get(selected, {}).get("scope", "working"),
                                    threadId=selected.split(":", 1)[1] if selected and not selected.startswith("task:") else None)
                 if selected != self.selected:
                     continue  # A response for the previous agent omits the new agent's history.
@@ -346,6 +358,7 @@ class Dashboard:
                 browser = value.get("filesBrowser")
                 location = self.files.locations.get(self.selected)
                 if (browser and location and browser.get("root") == location["root"]
+                        and browser.get("scope", "working") == location.get("scope", "working")
                         and self.selected == "thread:" + browser.get("threadId", "")):
                     self.files.locations[self.selected] = browser
                 enabled = value.get("settings", {}).get("mouseEnabled", True)
@@ -1000,6 +1013,7 @@ class Dashboard:
         if self.data.get("sleepError"):
             status_text, status_tone_name = "Could not prevent sleep: " + self.data["sleepError"], "warning"
         self.put(screen, composer_top - 1, x, status_text, width, s[status_tone_name])
+        self.draw_commands(screen, composer_top - 1, x, width)
         border = s["accent" if self.focus == "chat" else "muted"]
         self.put(screen, composer_top, x, "╭" + "─" * (width - 2) + "╮", width, border)
         prompt = self.wizard["label"] if self.wizard else "Prompt"
@@ -1029,8 +1043,8 @@ class Dashboard:
             for y in range(2, h - 1):
                 self.band(screen, y, 1, w - 3, "", "surface")
             self.hub_hits = []
-            is_help = self.panel == HELP or self.panel == "HUB SETTINGS" or self.panel.startswith("# ")
-            rich_content = settings_text(self.data, self.directory) if self.panel == "HUB SETTINGS" else self.panel
+            is_help = self.panel == HELP or self.panel in ("HUB SETTINGS", "SKILLS") or self.panel.startswith("# ")
+            rich_content = settings_text(self.data, self.directory) if self.panel == "HUB SETTINGS" else self.skills_panel() if self.panel == "SKILLS" else self.panel
             help_content = help_rows(w - 8, rich_content) if is_help else []
             is_preview = self.panel.startswith("AGENT SETUP PREVIEW")
             preview = preview_rows(self.panel, w - 8, wrap) if is_preview else []
@@ -1166,6 +1180,60 @@ class Dashboard:
         self.submit("respond", requestId=r["id"], response=response)
         self.panel = self.approval = None
 
+    def available_skills(self):
+        entity = self.current()
+        if (self.data.get("skillsProvider") != entity.get("provider", "codex")
+                or self.data.get("skillsCwd") != workspace_root(entity)):
+            return []
+        return self.data.get("skills", [])
+
+    def skills_panel(self):
+        skills = self.available_skills()
+        heading = "# Skills · " + str(self.current().get("provider", "codex")).title()
+        heading += "\n\nProvider CLI · " + workspace_root(self.current())
+        heading += "\nUse /skill NAME TASK, or let the agent choose a relevant skill.\n\n"
+        if skills:
+            return heading + "\n\n".join("## " + item["name"] + "\n" + item["description"] +
+                "\nSource: " + item.get("source", "provider") + "\n" + item["path"] for item in skills)
+        status = self.data.get("skillsStatus", "Loading skills from provider…")
+        return heading + ("No enabled skills found for this agent." if status == "Ready" else status)
+
+    def command_options(self):
+        if self.focus != "chat" or self.panel or self.wizard or self.pasting:
+            return []
+        if self.command_query != self.buffer:
+            self.command_query = self.buffer
+            self.command_index = 0
+            self.command_dismissed = None
+        if self.command_dismissed == self.buffer:
+            return []
+        return command_choices(self.buffer, self.available_skills())
+
+    def complete_command(self, options):
+        if options:
+            self.buffer = options[self.command_index % len(options)][0] + " "
+            self.cursor = len(self.buffer)
+            self.command_hits = []
+
+    def draw_commands(self, screen, top, x, width):
+        self.command_hits = []
+        options = self.command_options()
+        if not options:
+            return
+        count = min(7, len(options), max(0, top - 3))
+        if not count:
+            return
+        self.command_index %= len(options)
+        first = min(max(0, self.command_index - count + 1), len(options) - count)
+        self.band(screen, top - count - 1, x, width, " Commands %d/%d · ↑↓ · Tab/Enter · Esc" % (self.command_index + 1, len(options)), "surface")
+        for row, index in enumerate(range(first, first + count)):
+            name, description = options[index]
+            y = top - count + row
+            self.band(screen, y, x, width, ("› " if index == self.command_index else "  ") + name + "  " + description,
+                      "selected" if index == self.command_index else "surface")
+            self.command_hits.append((x, x + width, y, index))
+            self.history_cells.pop(y, None)
+
     def entered(self, intervention=False):
         text = self.buffer.strip()
         if self.wizard and self.wizard["kind"] == "hub_host":
@@ -1249,6 +1317,19 @@ class Dashboard:
                     self.buffer = self.drafts.get(self.selected, "")
                     self.cursor = len(self.buffer)
             return
+        if text.startswith("/skill "):
+            parts = text.split(maxsplit=2)
+            skill = next((entry for entry in self.available_skills() if entry["name"] == parts[1]), None)
+            if not skill:
+                self.notice = "Skill not found for this agent. /skills lists its available skills."
+                return
+            if len(parts) < 3:
+                self.notice = "Add your task after /skill " + skill["name"]
+                return
+            if self.current().get("provider") == "opencode":
+                text = "Use the skill " + skill["name"] + " through OpenCode's native skill tool, respecting its permissions, and announce its use.\n\n" + parts[2]
+            else:
+                text = "Use the skill " + skill["name"] + " from " + json.dumps(skill["path"]) + ". Read its SKILL.md and announce its use.\n\n" + parts[2]
         if text.startswith("/"):
             self.buffer, self.cursor = "", 0
             try:
@@ -1256,6 +1337,8 @@ class Dashboard:
                 command, args = parts[0], parts[1:]
                 if command in ("/quit", "/q"):
                     self.stopped.set()
+                elif command in ("/skills", "/skill"):
+                    self.panel, self.panel_scroll = "SKILLS", 0
                 elif command == "/help":
                     self.panel, self.panel_scroll = HELP, 0
                 elif command == "/processes":
@@ -1422,6 +1505,8 @@ class Dashboard:
         self.update_pointer()
 
     def pointer_at(self, x, y):
+        if self.command_options() and any(left <= x < right and y == row for left, right, row, _ in self.command_hits):
+            return "pointer"
         if self.panel == "APPEARANCE":
             return "pointer" if any(left <= x < right and y == row for left, right, row, *_ in self.appearance.hits) else "default"
         if self.panel == "HUB SETTINGS":
@@ -1460,6 +1545,16 @@ class Dashboard:
 
     def mouse(self, button, x, y):
         self.update_pointer(x, y)
+        options = self.command_options()
+        if options:
+            hit = next((index for left, right, row, index in self.command_hits if left <= x < right and y == row), None)
+            if hit is not None:
+                if button == 0:
+                    self.command_index = hit
+                    self.complete_command(options)
+                elif button in (64, 65):
+                    self.command_index = (self.command_index + (1 if button == 65 else -1)) % len(options)
+                return
         if self.panel == "APPEARANCE":
             self.appearance.mouse(self, button, x, y)
             return
@@ -1555,6 +1650,16 @@ class Dashboard:
             self.native_copy_mode = False
             self.clear_selection()
             self.focus = "chat"
+            return
+        options = self.command_options()
+        if options and key in (curses.KEY_UP, curses.KEY_DOWN, "\t", "\r", curses.KEY_ENTER, "\x1b"):
+            if key in (curses.KEY_UP, curses.KEY_DOWN):
+                self.command_index = (self.command_index + (1 if key == curses.KEY_DOWN else -1)) % len(options)
+            elif key == "\x1b":
+                self.command_dismissed = self.buffer
+                self.command_hits = []
+            else:
+                self.complete_command(options)
             return
         if key not in (curses.KEY_UP, curses.KEY_DOWN):
             self.preferred_column = None

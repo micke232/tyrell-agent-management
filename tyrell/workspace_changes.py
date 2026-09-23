@@ -47,7 +47,7 @@ async def comparison_base(cwd):
         candidates.append(remote)
     except ValueError:
         pass
-    candidates.extend(['main', 'master'])
+    candidates.extend(['origin/main', 'origin/master', 'main', 'master'])
     for candidate in candidates:
         if branch == candidate.removeprefix('origin/'):
             return 'HEAD'

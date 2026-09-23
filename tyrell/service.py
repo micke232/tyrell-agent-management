@@ -15,6 +15,7 @@ from .codex_storage import environment as codex_environment
 from . import __version__
 from .hub_settings import local_report
 from .state import State
+from .skills import provider_catalogue, instructions as skill_instructions
 from .progress import PROGRESS_CONTEXT, INTERVENTION_CONTEXT, plan_only_stop
 from .worktrees import create_worktree, git
 from .connections import CopilotConnection, normalize_host
@@ -63,6 +64,9 @@ class Service:
         self.opencode = OpenCodeRuntime(self.state, self.directory, self.on_request)
         self.process_inventory = {}
         self.installation = {}
+        self.skill_catalogues = {}
+        self.skills_requested = None
+        self.skill_locks = {}
         self.background_errors = {}
         self.workspace_git = {}
         self.workspace_requested = None
@@ -228,10 +232,11 @@ class Service:
         while not self.stop.is_set():
             requested = self.files_requested
             if requested and time.monotonic() - requested[2] < 10:
-                tid, root, _ = requested
+                tid, root, _ = requested[:3]
+                scope = requested[3] if len(requested) > 3 else "working"
                 if root:
                     try:
-                        result = await self.dispatch({"action": "files_open", "path": root})
+                        result = await self.dispatch({"action": "files_open", "path": root, "scope": scope})
                         self.files_browser = {**result, "threadId": tid}
                     except (OSError, ValueError) as error:
                         self.files_browser = {"root": root, "records": {}, "threadId": tid, "error": str(error)}
@@ -367,6 +372,31 @@ class Service:
             profile.update(detected)
             self.state.dirty = True
 
+    def skill_key(self, entity):
+        return (entity.get("provider", "codex"), workspace_root(entity))
+
+    async def refresh_skills(self, key):
+        async with self.skill_locks.setdefault(key, asyncio.Lock()):
+            previous = self.skill_catalogues.get(key, {})
+            if time.monotonic() - previous.get("checkedAt", 0) < 10:
+                return previous.get("items", [])
+            try:
+                items = await provider_catalogue(*key, rpc=self.rpc if self.state.connected else None)
+                self.skill_catalogues[key] = {"items": items, "checkedAt": time.monotonic()}
+            except (OSError, ValueError, RuntimeError, asyncio.TimeoutError):
+                self.skill_catalogues[key] = {"items": [], "checkedAt": time.monotonic(),
+                    "error": "Could not read skills from " + key[0] + ". Retrying automatically."}
+            return self.skill_catalogues[key]["items"]
+
+    async def monitor_skills(self):
+        while not self.stop.is_set():
+            if self.skills_requested:
+                await self.refresh_skills(self.skills_requested)
+            try:
+                await asyncio.wait_for(self.stop.wait(), 3)
+            except asyncio.TimeoutError:
+                pass
+
     async def check_installation(self):
         self.installation = await asyncio.to_thread(local_report, self.command[0])
 
@@ -463,9 +493,13 @@ class Service:
             if req.get("view") == "setup" and entity:
                 self.setup_requested = (project_root(entity), time.monotonic())
             if req.get("view") == "files" and entity:
-                self.files_requested = (entity["id"], req.get("filesRoot"), time.monotonic())
+                self.files_requested = (entity["id"], req.get("filesRoot"), time.monotonic(), req.get("filesScope", "working"))
             if req.get("view") == "processes":
                 self.process_requested_at = time.monotonic()
+            skill_key = self.skill_key(entity) if entity else None
+            if skill_key:
+                self.skills_requested = skill_key
+            skill_info = self.skill_catalogues.get(skill_key, {})
             snapshot = self.state.snapshot()
             for bucket in ("threads", "archived"):
                 snapshot[bucket] = {tid: t for tid, t in snapshot[bucket].items() if self.owns_thread(tid)}
@@ -480,14 +514,17 @@ class Service:
                     snapshot[collection] = {tid: {**t, "items": t.get("items", []) if tid == req.get("threadId") else [],
                                                  "changedFiles": t.get("changedFiles", {}) if tid == req.get("threadId") else {}}
                                             for tid, t in snapshot[collection].items()}
-            return {**snapshot, "apiVersion": 9, "appVersion": __version__, "installation": self.installation, "workspaceGit": self.workspace_git, "filesBrowser": self.files_browser if req.get("view") == "files" else None, "pid": os.getpid(), "providers": self.providers(), "processInventory": self.process_inventory,
+            return {**snapshot, "skills": skill_info.get("items", []), "skillsStatus": skill_info.get("error") or ("Ready" if "checkedAt" in skill_info else "Loading skills from provider…"), "skillsProvider": skill_key[0] if skill_key else None, "skillsCwd": skill_key[1] if skill_key else None, "apiVersion": 9, "appVersion": __version__, "installation": self.installation, "workspaceGit": self.workspace_git, "filesBrowser": self.files_browser if req.get("view") == "files" else None, "pid": os.getpid(), "providers": self.providers(), "processInventory": self.process_inventory,
                     "preventingSleep": bool(self.caffeine and self.caffeine.returncode is None), "sleepError": self.sleep_error, "backgroundErrors": dict(self.background_errors)}
         if action == "files_open":
             root = Path(req["path"]).expanduser().resolve(strict=True)
             if not root.is_dir():
                 raise ValueError("Choose a folder")
             try:
-                records = await workspace_changes(root)
+                scope = req.get("scope", "working")
+                if scope not in ("working", "branch"):
+                    raise ValueError("Unknown files comparison scope")
+                records = await workspace_changes(root, "HEAD" if scope == "working" else None)
                 error = ("Showing the first 250 of %d changed files." % records.total) if records.truncated else ""
                 base = records.base
                 records = {path: record for path, record in records.items()
@@ -495,7 +532,7 @@ class Service:
             except (ValueError, OSError) as exc:
                 base = None
                 records, error = {}, "Git changes unavailable for this folder: " + str(exc)
-            return {"root": str(root), "records": records, "error": error, "base": base}
+            return {"root": str(root), "records": records, "error": error, "base": base, "scope": req.get("scope", "working")}
         if action == "setup_import":
             profile = await asyncio.to_thread(discover_project, req["path"])
             profiles = self.state.data.setdefault("projectProfiles", {})
@@ -912,6 +949,9 @@ class Service:
             "dashboard-progress": {"kind": "application", "value": PROGRESS_CONTEXT},
             "dashboard-setup": {"kind": "application", "value": instruction_text(config)},
         }
+        skill_context = skill_instructions(await self.refresh_skills(self.skill_key(t)))
+        if skill_context:
+            params["additionalContext"]["dashboard-skills"] = {"kind": "application", "value": skill_context}
         params["additionalContext"]["dashboard-ports"] = {"kind": "application", "value":
             "If you are authorized to start your own server, use agent dev port " + str(t["agentPort"]) +
             " or agent test port " + str(t["agentTestPort"]) + ". The developer's configured port " + (developer_port or "(project default)") +
@@ -1057,6 +1097,7 @@ class Service:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stop.set)
         loops = {
+            "Skills discovery": self.monitor_skills,
             "Codex connection": self.connection_loop,
             "State maintenance": self.maintain,
             "Processes": self.monitor_processes,

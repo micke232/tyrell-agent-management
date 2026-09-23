@@ -89,7 +89,8 @@ class State:
             if turns and t.get("planTurnId") != turns[-1]["id"]:
                 t.update(plan=[], planExplanation=None, planSource=None, estimate=None)
             t["items"] = []
-            t["changedFiles"] = {}
+            if t.get("filesSource") != "git":
+                t["changedFiles"] = {}
             for turn in info.get("turns", []):
                 for item in turn.get("items", []):
                     self.put_item(t, item, read_plan=turn is turns[-1], historical=True)

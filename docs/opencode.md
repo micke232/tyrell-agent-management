@@ -68,3 +68,11 @@ python3 scripts/check_opencode.py /path/to/opencode
 Official references: [CLI](https://opencode.ai/docs/cli/),
 [server API](https://opencode.ai/docs/server/),
 [permissions](https://opencode.ai/docs/permissions/).
+
+## Skills
+
+`/skills` lists the selected agent's OpenCode skills, discovered by
+`opencode debug skill --pure` in its working folder. This matches Tyrell's
+OpenCode mode with external plugins disabled. `/skill NAME TASK` requests a skill
+explicitly; automatic selection announces the skill before using it. Skill loading
+uses OpenCode's native tool and remains subject to its skill permissions.

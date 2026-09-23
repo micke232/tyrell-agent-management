@@ -9,6 +9,8 @@ def workspace_root(thread):
 
 def record_changes(thread, item):
     """Keep the latest reported patch per path, independent of chat retention."""
+    if thread.get("filesSource") == "git":
+        return  # Historical/tool patches must not contaminate the current Git snapshot.
     records = thread.setdefault("changedFiles", {})
     for change in item.get("changes", []):
         path = change.get("path")
@@ -77,6 +79,7 @@ class FilesView:
         location = self.locations.get(ui.selected)
         root = location["root"] if location else workspace_root(thread)
         records = location["records"] if location else thread.get("changedFiles", {})
+        scope = location.get("scope", "working") if location else "working"
         previous = self.rows[self.index].get("action") if self.rows and self.index < len(self.rows) else None
         rows = []
 
@@ -121,21 +124,30 @@ class FilesView:
             self.detail = None
             row("Root: " + root, "accent", copy=True)
             row("Open folder…", "accent", ("open", root))
+            shared = [t.get("name") or tid[:8] for tid, t in ui.data.get("threads", {}).items()
+                      if tid != thread.get("id") and workspace_root(t) == root]
+            if shared:
+                row("Shared workspace with: " + ", ".join(shared), "warning")
+            row("Show uncommitted changes" if scope == "branch" else "Include branch commits", "accent", ("scope", "working" if scope == "branch" else "branch"))
             if location:
-                row("Refresh", "accent", ("choose", root))
+                row("Refresh", "accent", ("refresh", root))
                 row("Use agent workspace", "muted", ("reset", ""))
                 row("Browsing only · agent working folder is unchanged", "muted")
                 if location.get("error"):
                     row(location["error"], "warning")
-            row(("%d files · Workspace changes" if (location is not None or thread.get("filesSource") == "git") else "%d files · Latest reported change per file") % len(records), "accent")
+            current_git = location is not None or thread.get("filesSource") == "git"
+            label = "Uncommitted changes" if scope == "working" else "Branch changes + uncommitted changes"
+            if not location and current_git and thread.get("filesBase") != "HEAD":
+                label = "Previous comparison · refreshing"
+            row(("%d files · " + (label if current_git else "Historical agent patches")) % len(records), "accent")
             comparison = location.get("base") if location else thread.get("filesBase")
             if comparison:
                 row("Compared with: " + ("HEAD · uncommitted changes" if comparison == "HEAD" else comparison[:12] + " · includes committed branch changes"), "muted")
-            row("Workspace Git diff · includes handed-over and external changes" if (location is not None or thread.get("filesSource") == "git") else "Agent history · not the current Git diff", "muted")
+            row("Git workspace state · not proof of which agent changed a file" if current_git else "Historical patches · may already be committed, merged or reverted", "muted")
             if thread.get("filesError"):
                 row(thread["filesError"], "warning")
             if not records:
-                row("No changes in this folder." if location else "No file changes reported by this agent yet.", "muted")
+                row(("No uncommitted changes." if scope == "working" else "No branch changes against this base.") if current_git else "No file changes reported by this agent yet.", "muted")
             tree = {}
             for path, record in records.items():
                 parts = display_path(path, root).split("/")
@@ -194,8 +206,11 @@ class FilesView:
             self.picker = Path(key).expanduser()
             self.index = 1
             self.scroll = 0
-        elif kind == "choose" and ui:
-            ui.submit("files_open", path=key, owner=ui.selected)
+        elif kind in ("choose", "refresh", "scope") and ui:
+            location = self.locations.get(ui.selected, {})
+            scope = key if kind == "scope" else location.get("scope", "working") if kind == "refresh" else "working"
+            path = (location.get("root") or workspace_root(ui.current())) if kind == "scope" else key
+            ui.submit("files_open", path=path, scope=scope, owner=ui.selected)
         elif kind in ("cancel", "reset"):
             self.picker = None
             if kind == "reset" and ui:
