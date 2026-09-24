@@ -733,7 +733,7 @@ class Dashboard:
         labels = [status_label(t, self.provider_connected(t)) for t in self.data.get("threads", {}).values()]
         work = sum(v in ("working", "quiet (active)") for v in labels)
         wait = sum(v in ("approval", "question", "waiting") for v in labels)
-        badges = connection_badges(self.data, w - 28, self.demo)
+        badges = connection_badges(self.data, w - (64 if w >= 120 else 28), self.demo)
         connection_x = w - sum(cells(text) + 2 for text, _ in badges) - 1
         self.band(screen, 0, 0, w - 1, "", "surface", True)
         self.put(screen, 0, 0, "  Tyrell Agent Management - They work. You take the credit.", connection_x - 1, s["surface"] | bold)
