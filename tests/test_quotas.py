@@ -34,7 +34,7 @@ class Quotas(unittest.TestCase):
         self.assertEqual(quota_label(info), 'Stale · 5h 0% left (reset due)')
         data = {'providers': {'codex': info}}
         self.assertIn('reset due', connections_text(data))
-        self.assertIn('reset due', ' '.join(x[0] for x in connection_badges(data, 500)))
+        self.assertNotIn('reset due', ' '.join(x[0] for x in connection_badges(data, 500)))
         self.assertLessEqual(sum(len(x[0])+2 for x in connection_badges(data, 60)), 60)
         self.assertNotIn('reset due', ' '.join(x[0] for x in connection_badges(data, 500, demo=True)))
 

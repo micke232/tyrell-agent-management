@@ -90,3 +90,21 @@ def quota_label(info, detail=False):
             label += ' · additional usage allowed'
         parts.append(label)
     return ('Stale · ' if stale else '') + ' / '.join(parts)
+
+
+def quota_badge(info):
+    """Lowest remaining allowance; detailed periods remain in Connections/F10."""
+    quota = info.get('quota') or {}
+    rows = quota.get('rows') or []
+    now = time.time()
+    if not rows or now - quota.get('checkedAt', 0) > 180:
+        return ''
+    limited = [row for row in rows if not row.get('unlimited')]
+    if not limited:
+        return '∞'
+    if any(number(row.get('reset')) and row['reset'] <= now for row in limited):
+        return ''
+    values = [row.get('remaining') for row in limited]
+    if not all(number(value) for value in values):
+        return ''
+    return '%g%%' % min(values)

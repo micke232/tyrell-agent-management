@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 from urllib.parse import urlparse
-from .quotas import copilot_quota, quota_label
+from .quotas import copilot_quota, quota_label, quota_badge
 
 
 LABELS = {
@@ -201,16 +201,14 @@ def connection_badges(data, available, demo=False):
         if demo:
             label, tone = "Demo", "muted"
         if state == "connected" and not demo:
-            label += " · " + quota_label(values.get(key, {}))
+            label = quota_badge(values.get(key, {}))
         result.append((name, label, tone, "●" if state == "connected" and not demo else "○"))
     if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
         short = {"Connected": "Online", "Connecting": "Wait", "Not installed": "Missing", "Unavailable": "Limited", "Switch account": "Account"}
-        result = [(name, short.get(label.split(" · ")[0], label.split(" · ")[0]) + (" · " + label.split(" · ", 1)[1] if " · " in label else ""), tone, dot) for name, label, tone, dot in result]
-    if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
-        result = [(name, label.replace(" · Quota unavailable", " · quota ?").replace(" left", ""), tone, dot) for name, label, tone, dot in result]
+        result = [(name, short.get(label, label), tone, dot) for name, label, tone, dot in result]
     if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
         return [(dot + " " + name, tone) for name, _, tone, dot in result]
-    return [(dot + " " + name + " " + label, tone) for name, label, tone, dot in result]
+    return [(dot + " " + name + (" " + label if label else ""), tone) for name, label, tone, dot in result]
 
 
 def connections_text(data, demo=False):
