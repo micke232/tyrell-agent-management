@@ -7,6 +7,7 @@ import shutil
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+from .quotas import copilot_quota, quota_label, quota_badge
 
 
 LABELS = {
@@ -45,7 +46,7 @@ class ConnectionError(RuntimeError):
 
 
 class CopilotProbe:
-    METHODS = {"ping", "auth.getStatus", "models.list"}
+    METHODS = {"ping", "auth.getStatus", "models.list", "account.getQuota"}
 
     def __init__(self):
         self.process = None
@@ -135,6 +136,7 @@ class CopilotConnection:
                     ping = await probe.call("ping")
                     identity = None
                     models = []
+                    quota, quota_at = {}, 0
                     while not stop.is_set():
                         auth = await probe.call("auth.getStatus")
                         if auth.get("isAuthenticated") is not True:
@@ -145,6 +147,8 @@ class CopilotConnection:
                         if expected_host() and host != expected_host():
                             self.update("account", host=host)
                             break
+                        if identity != current:
+                            quota, quota_at = {}, 0
                         if identity != current or not models:
                             try:
                                 result = await probe.call("models.list")
@@ -157,7 +161,13 @@ class CopilotConnection:
                         if not models:
                             self.update("unavailable", authenticated=True)
                             break
-                        self.update("connected", authenticated=True, models=models,
+                        if time.monotonic() >= quota_at:
+                            try:
+                                quota = copilot_quota(await probe.call("account.getQuota"))
+                            except (ConnectionError, ValueError, TypeError, asyncio.TimeoutError):
+                                pass  # Keep connectivity and mark old data stale in the UI.
+                            quota_at = time.monotonic() + 60
+                        self.update("connected", authenticated=True, models=models, quota=quota,
                                     host=host, protocolVersion=ping.get("protocolVersion"))
                         try:
                             await asyncio.wait_for(stop.wait(), 15)
@@ -190,13 +200,15 @@ def connection_badges(data, available, demo=False):
         label, tone = LABELS.get(state, LABELS["offline"])
         if demo:
             label, tone = "Demo", "muted"
+        if state == "connected" and not demo:
+            label = quota_badge(values.get(key, {}))
         result.append((name, label, tone, "●" if state == "connected" and not demo else "○"))
     if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
         short = {"Connected": "Online", "Connecting": "Wait", "Not installed": "Missing", "Unavailable": "Limited", "Switch account": "Account"}
         result = [(name, short.get(label, label), tone, dot) for name, label, tone, dot in result]
     if sum(len(name) + len(label) + 5 for name, label, _, _ in result) > available:
         return [(dot + " " + name, tone) for name, _, tone, dot in result]
-    return [(dot + " " + name + " " + label, tone) for name, label, tone, dot in result]
+    return [(dot + " " + name + (" " + label if label else ""), tone) for name, label, tone, dot in result]
 
 
 def connections_text(data, demo=False):
@@ -205,7 +217,7 @@ def connections_text(data, demo=False):
         info = providers(data).get(key, {})
         state = info.get("status", "offline")
         label = "Demo" if demo else LABELS.get(state, LABELS["offline"])[0]
-        lines.extend([name + " · " + label])
+        lines.extend([name + " · " + label + (" · " + quota_label(info, detail=True) if state == "connected" and not demo else "")])
         models = info.get("models", [])
         if state == "connected" and not demo:
             lines.append("Reported models (%d):" % len(models))

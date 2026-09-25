@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .quotas import quota_label
 from . import __version__
 from .opencode_runtime import opencode_executable
 from .terminal_setup import terminal_info
@@ -80,7 +81,7 @@ def settings_text(data, directory):
         if installed and installed.get('installed'):
             cli += ' · ' + (installed.get('version') or 'Version unknown')
             cli += ' · ' + ('Compatible' if installed.get('compatible') else 'Setup needed')
-        connection = 'Connected' if connected else 'Not connected'
+        connection = 'Connected · ' + quota_label(info, detail=True) if connected else 'Not connected'
         if not connected and status not in ('missing', 'offline'):
             connection += ' · ' + LABELS.get(status, ('Unavailable', 'warning'))[0]
         lines.extend(['**' + name + '**', '  CLI: ' + cli, '  Connection: ' + connection,

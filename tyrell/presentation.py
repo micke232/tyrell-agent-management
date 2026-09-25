@@ -3,6 +3,7 @@ import curses
 import re
 
 from .progress import conversation_text
+from .links import link_ranges, slice_links, web_url
 
 
 PALETTE = {
@@ -59,7 +60,7 @@ def syntax_spans(text):
 INLINE_MARKDOWN = re.compile(r"(?<!\\)(?:\*\*(?P<strong>.+?)\*\*|__(?P<bold>.+?)__|(?P<ticks>`+)(?P<code>.+?)(?P=ticks)|\[(?P<label>[^\]]+)\]\((?P<url>[^)]+)\))")
 
 
-def markdown_rows(text, width, wrap, crop):
+def markdown_rows(text, width, wrap, crop, with_links=False):
     """Render common Markdown as terminal spans; keep fenced code literal."""
     fence = None
     for raw in text.splitlines() or [""]:
@@ -74,9 +75,9 @@ def markdown_rows(text, width, wrap, crop):
         if fence:
             while len(crop(line, width)) < len(line):
                 part = crop(line, width)
-                yield part, syntax_spans(part)
+                yield (part, syntax_spans(part), []) if with_links else (part, syntax_spans(part))
                 line = line[len(part):]
-            yield line, syntax_spans(line)
+            yield (line, syntax_spans(line), []) if with_links else (line, syntax_spans(line))
             continue
         heading = re.match(r"^#{1,6}\s+", line)
         tone = "strong" if heading else "agent"
@@ -84,18 +85,25 @@ def markdown_rows(text, width, wrap, crop):
             line = line[heading.end():]
         line = re.sub(r"^(\s*)[-*] ", r"\1• ", line)
         spans, end = [], 0
+        named_links = []
         for match in INLINE_MARKDOWN.finditer(line):
             if match.start() > end:
                 spans.append((line[end:match.start()], tone))
             if match["code"] is not None:
                 spans.append((match["code"], "inlinecode"))
             elif match["label"] is not None:
-                spans.append((match["label"] + " (" + match["url"] + ")", tone))
+                start = sum(len(value) for value, _ in spans)
+                rendered = match["label"] + " (" + match["url"] + ")"
+                spans.append((rendered, tone))
+                if web_url(match["url"]):
+                    named_links.append((start, start + len(rendered), match["url"]))
             else:
                 spans.append((match["strong"] or match["bold"], "strong"))
             end = match.end()
         spans.append((line[end:], tone))
         plain = "".join(value for value, _ in spans)
+        links = named_links + [(left, right, url) for left, right, url in link_ranges(plain)
+                               if not any(a <= left < b for a, b, _ in named_links)]
         offset = 0
         for part in wrap(plain, width):
             start = plain.find(part, offset) if part else offset
@@ -106,7 +114,7 @@ def markdown_rows(text, width, wrap, crop):
                 if left < right:
                     styled.append((value[left:right], style))
                 position += len(value)
-            yield part, styled
+            yield (part, styled, slice_links(links, start, finish)) if with_links else (part, styled)
             offset = finish
 
 
@@ -185,11 +193,17 @@ def timeline(items, width, view, wrap, crop):
         rows.append(row("╭─ " + title, True))
         body_width = max(8, width - inset - 4)
         if kind == "agentMessage":
-            for part, spans in markdown_rows(text, body_width, wrap, crop):
-                rows.append({**row("│ " + part, copy_text=part), "spans": [("│ ", tone)] + spans})
+            for part, spans, links in markdown_rows(text, body_width, wrap, crop, with_links=True):
+                rows.append({**row("│ " + part, copy_text=part), "spans": [("│ ", tone)] + spans, "links": links})
         else:
+            offset = 0
+            links = link_ranges(text)
             for part in wrap(text, body_width):
-                rows.append(row("│ " + part, syntax=kind in ("commandExecution", "fileChange"), copy_text=part))
+                start = text.find(part, offset)
+                start = max(offset, start)
+                rows.append({**row("│ " + part, syntax=kind in ("commandExecution", "fileChange"), copy_text=part),
+                             "links": slice_links(links, start, start + len(part))})
+                offset = start + len(part)
         rows.append({**row(" " * max(0, width - inset)), "footer": True})
         rows.append({"text": "", "tone": "base", "title": "", "inset": 0, "header": False, "copy_text": ""})
     return rows

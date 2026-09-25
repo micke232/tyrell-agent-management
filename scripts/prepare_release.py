@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.build_homebrew import build
 
 
-def prepare(repository, output, check=False):
+def prepare(repository, output, check=False, keep_formula=False):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Fixed ZIP member dates plus pinned tooling make the wheel byte-identical
@@ -40,10 +40,11 @@ def prepare(repository, output, check=False):
     if check:
         if not formula.exists() or formula.read_bytes() != generated.read_bytes():
             raise SystemExit('Formula differs from this build. Run scripts/prepare_release.py and commit Formula/tyrell.rb.')
-    else:
+    elif not keep_formula:
         formula.parent.mkdir(exist_ok=True)
         shutil.copyfile(generated, formula)
-    print('Verified formula: ' + str(formula) if check else 'Updated formula: ' + str(formula))
+    print('Built package; published formula preserved' if keep_formula else
+          'Verified formula: ' + str(formula) if check else 'Updated formula: ' + str(formula))
     return archive
 
 
@@ -51,6 +52,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', default='micke232/tyrell-agent-management')
     parser.add_argument('--output', type=Path, default=ROOT/'dist')
-    parser.add_argument('--check', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--check', action='store_true')
+    mode.add_argument('--keep-formula', action='store_true', help='Build CI artifacts without changing the published formula')
     args = parser.parse_args()
-    prepare(args.repository, args.output, args.check)
+    prepare(args.repository, args.output, args.check, args.keep_formula)

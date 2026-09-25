@@ -8,6 +8,7 @@ import signal
 import select
 import sys
 import threading
+import webbrowser
 import termios
 import time
 import unicodedata
@@ -18,6 +19,7 @@ from .client import request
 from .clipboard import copy_text, selection_text
 from .appearance import Appearance
 from .composer import DraftLayout
+from .links import web_url
 from .commands import choices as command_choices
 from .progress import conversation_text, estimate_label, plan_only_stop
 from .terminal_input import key_sequences, enhanced_key
@@ -598,6 +600,7 @@ class Dashboard:
     def clear_selection(self):
         self.selection_anchor = self.selection_end = None
         self.selection_dragging = False
+        self.pending_link = None
         self.history_snapshot = None
 
     def selection_point(self, x, y):
@@ -614,6 +617,13 @@ class Dashboard:
             return
         if x is not None:
             self.selection_end = self.selection_point(x, y)
+        pending = getattr(self, "pending_link", None)
+        self.pending_link = None
+        if pending and x is not None and (x, y) == pending[:2] and self.link_at(x, y) == pending[2]:
+            self.clear_selection()
+            if web_url(pending[2]):
+                threading.Thread(target=self.open_link, args=(pending[2],), daemon=True).start()
+            return
         self.selection_dragging = False
         text = selection_text(self.history_rows, self.selection_anchor, self.selection_end)
         if not text:
@@ -733,7 +743,7 @@ class Dashboard:
         labels = [status_label(t, self.provider_connected(t)) for t in self.data.get("threads", {}).values()]
         work = sum(v in ("working", "quiet (active)") for v in labels)
         wait = sum(v in ("approval", "question", "waiting") for v in labels)
-        badges = connection_badges(self.data, w - 28, self.demo)
+        badges = connection_badges(self.data, w - (64 if w >= 120 else 28), self.demo)
         connection_x = w - sum(cells(text) + 2 for text, _ in badges) - 1
         self.band(screen, 0, 0, w - 1, "", "surface", True)
         self.put(screen, 0, 0, "  Tyrell Agent Management - They work. You take the credit.", connection_x - 1, s["surface"] | bold)
@@ -972,7 +982,11 @@ class Dashboard:
                 offset_x += cells(text)
             if line.get("copy_text") is not None:
                 text_x = x + inset + line.get("copy_offset", 0)
-                self.history_cells[body_start + row] = {"index": line["source_index"], "x": text_x, "text": line["copy_text"]}
+                self.history_cells[body_start + row] = {"index": line["source_index"], "x": text_x, "text": line["copy_text"], "links": line.get("links", [])}
+                for left, right, url in line.get("links", []):
+                    self.put(screen, body_start + row, text_x + cells(line["copy_text"][:left]),
+                             line["copy_text"][left:right], cells(line["copy_text"][left:right]),
+                             s["accent"] | curses.A_UNDERLINE)
                 if self.selection_anchor is not None and self.selection_end is not None:
                     first, last = sorted((self.selection_anchor, self.selection_end))
                     index = line["source_index"]
@@ -1225,6 +1239,7 @@ class Dashboard:
             return
         self.command_index %= len(options)
         first = min(max(0, self.command_index - count + 1), len(options) - count)
+        self.history_cells.pop(top - count - 1, None)
         self.band(screen, top - count - 1, x, width, " Commands %d/%d · ↑↓ · Tab/Enter · Esc" % (self.command_index + 1, len(options)), "surface")
         for row, index in enumerate(range(first, first + count)):
             name, description = options[index]
@@ -1504,6 +1519,23 @@ class Dashboard:
         sys.stdout.flush()
         self.update_pointer()
 
+    def open_link(self, url):
+        try:
+            if not webbrowser.open(url, new=2):
+                self.notice = "Could not open link in the browser."
+        except (OSError, webbrowser.Error):
+            self.notice = "Could not open link in the browser."
+
+    def link_at(self, x, y):
+        if self.panel or self.wizard:
+            return None
+        row = self.history_cells.get(y)
+        if row:
+            for left, right, url in row.get("links", []):
+                if row["x"] + cells(row["text"][:left]) <= x < row["x"] + cells(row["text"][:right]):
+                    return url
+        return None
+
     def pointer_at(self, x, y):
         if self.command_options() and any(left <= x < right and y == row for left, right, row, _ in self.command_hits):
             return "pointer"
@@ -1524,6 +1556,8 @@ class Dashboard:
         if self.view == "setup" and y in self.setup.hits and self.history_bounds and self.history_bounds[0] <= x < self.history_bounds[0] + self.history_bounds[2]:
             return "pointer"
         if self.view == "files" and y in self.files.hits and self.history_bounds and self.history_bounds[0] <= x < self.history_bounds[0] + self.history_bounds[2]:
+            return "pointer"
+        if not self.selection_dragging and self.link_at(x, y):
             return "pointer"
         row = self.history_cells.get(y)
         if self.selection_dragging or (row and row["x"] <= x < row["x"] + cells(row["text"])):
@@ -1561,6 +1595,7 @@ class Dashboard:
         if button == 35:  # Motion with no button down is hover only.
             return
         if button == 32 and self.selection_dragging and not self.panel:
+            self.pending_link = None
             self.selection_end = self.selection_point(x, y)
             if self.history_bounds:
                 _, top, _, height = self.history_bounds
@@ -1573,7 +1608,7 @@ class Dashboard:
             self.seek_scrollbar(y)
             return
         if button == 3:
-            self.finish_selection()
+            self.finish_selection(x, y)
             return
         if button & 64 and not button & 32 and button & 3 in (0, 1):
             delta = 3 if button & 1 == 0 else -3
@@ -1637,6 +1672,8 @@ class Dashboard:
                 self.history_snapshot = list(self.history_rows)
                 self.selection_anchor = self.selection_end = point
                 self.selection_dragging = True
+                url = self.link_at(x, y)
+                self.pending_link = (x, y, url) if url else None
         elif self.draft_top - 1 <= y <= self.draft_top + self.draft_height:
             self.focus = "chat"
             if self.draft_top <= y < self.draft_top + self.draft_height:

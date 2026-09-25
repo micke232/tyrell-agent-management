@@ -60,7 +60,7 @@ class ConnectionChecks(unittest.IsolatedAsyncioTestCase):
             monitor = CopilotConnection()
             stop = asyncio.Event()
             async def call(method):
-                return {"ping": {"protocolVersion": 3}, "auth.getStatus": auth, "models.list": models}[method]
+                return {"ping": {"protocolVersion": 3}, "auth.getStatus": auth, "models.list": models, "account.getQuota": {}}[method]
             with patch("tyrell.connections.copilot_executable", return_value="copilot"), \
                  patch.object(CopilotProbe, "start", new_callable=AsyncMock), \
                  patch.object(CopilotProbe, "call", side_effect=call), \

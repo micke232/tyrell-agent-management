@@ -15,6 +15,7 @@ from .codex_storage import environment as codex_environment
 from . import __version__
 from .hub_settings import local_report
 from .state import State
+from .quotas import codex_quota
 from .skills import provider_catalogue, instructions as skill_instructions
 from .progress import PROGRESS_CONTEXT, INTERVENTION_CONTEXT, plan_only_stop
 from .worktrees import create_worktree, git
@@ -64,6 +65,8 @@ class Service:
         self.opencode = OpenCodeRuntime(self.state, self.directory, self.on_request)
         self.process_inventory = {}
         self.installation = {}
+        self.codex_quota = {}
+        self.quota_due = 0
         self.skill_catalogues = {}
         self.skills_requested = None
         self.skill_locks = {}
@@ -121,6 +124,7 @@ class Service:
         return {
             "codex": {"name": "Codex", "connected": self.state.connected,
                       "status": "connected" if self.state.connected else "connecting",
+                      "quota": self.codex_quota if self.state.connected else {},
                       "sessionStorage": "private" if self.using_private else "migrationPending" if self.private_codex else "custom",
                       "models": [{"id": m["model"], "name": m.get("displayName") or m["model"]}
                                  for m in self.state.models] if self.state.connected else []},
@@ -221,6 +225,10 @@ class Service:
         return t
 
     def codex_event(self, method, params):
+        if method in ("account/rateLimits/updated", "account/updated"):
+            self.quota_due = 0
+            if method == "account/updated":
+                self.codex_quota = {}
         tid = params.get("threadId") or params.get("thread", {}).get("id")
         if tid and not self.owns_thread(tid) and not self.adopt_child(params.get("thread", {})):
             return
@@ -340,6 +348,8 @@ class Service:
                 self.state.error = str(error)
             finally:
                 self.state.connected = False
+                self.codex_quota = {}
+                self.quota_due = 0
                 self.clear_codex_requests()
                 await self.rpc.close()
             try:
@@ -371,6 +381,22 @@ class Service:
         if any(profile.get(key) != value for key, value in detected.items()):
             profile.update(detected)
             self.state.dirty = True
+
+    async def monitor_quotas(self):
+        while not self.stop.is_set():
+            if self.state.connected and time.monotonic() >= self.quota_due:
+                rpc = self.rpc
+                try:
+                    result = await rpc.call("account/rateLimits/read", {}, timeout=10)
+                    if rpc is self.rpc and self.state.connected:
+                        self.codex_quota = codex_quota(result)
+                except (OSError, ValueError, TypeError, RpcError, asyncio.TimeoutError):
+                    pass  # Optional metadata must never break the agent connection.
+                self.quota_due = time.monotonic() + 60
+            try:
+                await asyncio.wait_for(self.stop.wait(), 5)
+            except asyncio.TimeoutError:
+                pass
 
     def skill_key(self, entity):
         return (entity.get("provider", "codex"), workspace_root(entity))
@@ -1097,6 +1123,7 @@ class Service:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stop.set)
         loops = {
+            "Quota discovery": self.monitor_quotas,
             "Skills discovery": self.monitor_skills,
             "Codex connection": self.connection_loop,
             "State maintenance": self.maintain,
