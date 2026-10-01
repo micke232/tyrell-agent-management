@@ -105,3 +105,15 @@ skills automatically and are instructed to announce their use.
 Files defaults to uncommitted changes. Choose **Include branch commits** to view
 committed branch changes as well. Shared workspaces are identified because a Git
 diff cannot attribute edits to an individual agent.
+
+### Deliver changes directly to your checkout
+
+If an isolated agent has already changed files, ask it naturally to **“apply the
+changes locally to my branch.”** Tyrell recognizes this as **Deliver changes to
+checkout**. It validates the repository, recorded base commit, current branch and
+overlapping changes, then creates a recovery backup before applying tracked,
+staged, unstaged, untracked and binary files uncommitted in the normal checkout.
+
+The delivery never switches branches, commits, pushes or merges. Conflicts leave
+the checkout untouched, and failures trigger a complete rollback. Successful
+results open in **Files** and offer to continue the same session in the checkout.

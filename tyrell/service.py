@@ -24,6 +24,7 @@ from .processes import inventory, choose_port
 from .handoff import prepare as prepare_handoff
 from .workspace_changes import git_bytes, changes as workspace_changes
 from .files_view import workspace_root
+from .checkout_delivery import deliver as deliver_checkout, is_delivery_instruction
 from urllib.parse import urlparse
 from .copilot_runtime import CopilotRuntime
 from .opencode_runtime import OpenCodeRuntime
@@ -715,6 +716,17 @@ class Service:
                 return await self.opencode.respond(pending, req["response"])
             if pending and pending.get("provider") == "copilot":
                 return await self.copilot_runtime.respond(pending, req["response"])
+        if action == "continue_checkout":
+            t = self.state.data["threads"].get(tid)
+            if not t or not t.get("checkoutDelivery"):
+                raise ValueError("No delivered checkout is available for this agent")
+            if t.get("status", {}).get("type") == "active":
+                raise ValueError("Wait until the agent is ready before changing its working folder")
+            destination = t["checkoutDelivery"]["destination"]
+            t["deliveredFromWorktree"] = t.pop("agentWorktree", None)
+            t.update(setupCwd=destination, cwd=destination, filesSource="git")
+            self.state.save()
+            return {"threadId": tid, "cwd": destination, "branch": t["checkoutDelivery"]["branch"]}
         if external_action and action in ("rename", "archive", "restore", "read_archive", "interrupt"):
             async with self.locks.setdefault("catalog", asyncio.Lock()):
                 async with self.locks.setdefault(tid, asyncio.Lock()):
@@ -901,6 +913,26 @@ class Service:
                 return result
         if action == "send":
             async with self.locks.setdefault(req["threadId"], asyncio.Lock()):
+                if is_delivery_instruction(req["text"]):
+                    t = self.state.thread(req["threadId"])
+                    if t.get("status", {}).get("type") == "active":
+                        raise ValueError("Wait until the agent is ready before delivering its changes")
+                    worktree = t.get("agentWorktree")
+                    if not worktree:
+                        raise ValueError("This agent has no isolated worktree to deliver")
+                    result = await asyncio.to_thread(deliver_checkout, worktree, self.directory / "delivery-backups")
+                    records = await workspace_changes(result["destination"], result["baseCommit"])
+                    t.update(checkoutDelivery=result, changedFiles=dict(records), filesSource="git",
+                             filesBase=result["baseCommit"], filesError="")
+                    t.setdefault("items", []).append({"id": "delivery-user-" + result["id"],
+                        "clientId": req.get("clientId"), "type": "userMessage", "text": req["text"]})
+                    t["items"].append({"id": "delivery-" + result["id"], "type": "appNotice",
+                        "text": "Delivered %d changed files to %s on branch %s. Backup: %s" % (
+                            len(result["paths"]), result["destination"], result["branch"], result["backup"])})
+                    t["items"] = t["items"][-250:]
+                    self.state.save()
+                    return {"delivery": result, "files": {"root": result["destination"],
+                        "records": dict(records), "base": result["baseCommit"], "error": ""}}
                 return await self.send_message(req["threadId"], req["text"], req.get("clientId"), req.get("intervention", False))
         if action == "interrupt":
             tid = req["threadId"]

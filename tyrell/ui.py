@@ -92,6 +92,9 @@ Steering a running turn keeps its current model and permissions.
 `F6` or `/handoff` Hand work to a new Codex or Copilot agent.
 Handover requires a ready agent and Git workspace. Changes and recent
 context are copied to a separate worktree. Review, then send a message to begin.
+Ask an idle worktree agent to “apply the changes locally to my branch” to run
+**Deliver changes to checkout**. Tyrell checks conflicts, keeps a recovery backup,
+and applies the result uncommitted without switching branches or creating commits.
 
 ## App settings
 `F10` or `/settings` Connections, CLI installation, login and GitHub host.
@@ -420,10 +423,33 @@ class Dashboard:
                     key = "thread:" + params["threadId"]
                     if self.drafts.get(key) == params["text"]:
                         self.drafts.pop(key, None)
-                self.notice = {"send": "", "plan": "Task planned · /start begins work",
+                    if result.get("delivery"):
+                        self.files.locations[key] = result["files"]
+                        self.view, self.focus = "files", "history"
+                        self.files.picker = self.files.detail = None
+                        self.files.index = self.files.scroll = 0
+                        self.wizard = {"kind": "continue_checkout", "threadId": params["threadId"],
+                                       "label": "Delivered · Enter continues this session in your checkout"}
+                        self.buffer = "Continue in checkout"
+                        self.cursor = len(self.buffer)
+                        self.notice = "Changes delivered · Files shows the result · Enter continues this session in the checkout"
+                if action == "continue_checkout":
+                    key = "thread:" + result["threadId"]
+                    thread = self.data.get("threads", {}).get(result["threadId"], {})
+                    thread.update(cwd=result["cwd"], setupCwd=result["cwd"])
+                    thread.pop("agentWorktree", None)
+                    self.files.locations.pop(key, None)
+                    self.wizard = None
+                    self.buffer = self.drafts.get(key, "")
+                    self.cursor = len(self.buffer)
+                    self.notice = "Session continues in " + result["cwd"] + " · Branch: " + result["branch"]
+                notices = {"send": "", "plan": "Task planned · /start begins work",
                                "start": "Task running in its own worktree", "settings": "Model saved for the next turn",
                                "prepare_review": "Local review requested · see Chat for the result", "respond": "Response sent", "interrupt": "Interrupt requested", "select": "Chat selected · Tab changes focus",
-                               "app_settings": "Settings saved", "copilot_host": "GitHub host saved", "agent_setup": "Setup saved · applies to your next message", "setup_import": "Project profile imported"}.get(action, "Done")
+                               "app_settings": "Settings saved", "copilot_host": "GitHub host saved", "agent_setup": "Setup saved · applies to your next message", "setup_import": "Project profile imported",
+                               "continue_checkout": self.notice}
+                if not (action == "send" and result.get("delivery")):
+                    self.notice = notices.get(action, "Done")
                 if action in ("create_agent", "handoff"):
                     self.data.setdefault("threads", {})[result["threadId"]] = result["thread"]
                     self.browse = "agents"
@@ -1251,6 +1277,10 @@ class Dashboard:
 
     def entered(self, intervention=False):
         text = self.buffer.strip()
+        if self.wizard and self.wizard["kind"] == "continue_checkout":
+            self.submit("continue_checkout", threadId=self.wizard["threadId"])
+            self.buffer, self.cursor = "", 0
+            return
         if self.wizard and self.wizard["kind"] == "hub_host":
             try:
                 host = None if text.lower() in ("", "auto") else normalize_host(text)
